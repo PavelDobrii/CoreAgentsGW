@@ -1,0 +1,33 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: cityguide
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+  app:
+    build:
+      context: ..
+      dockerfile: city_guide/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/cityguide
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GPT_MODEL: ${GPT_MODEL:-gpt-4o-mini}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      USE_GOOGLE_SOURCES: ${USE_GOOGLE_SOURCES:-true}
+      PLACES_RADIUS_M: ${PLACES_RADIUS_M:-2500}
+      PLACES_MAX_RESULTS: ${PLACES_MAX_RESULTS:-20}
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+volumes:
+  pgdata:
