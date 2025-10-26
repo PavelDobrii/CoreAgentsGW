@@ -12,7 +12,11 @@ from .common import Coordinate
 class HardConstraints(BaseModel):
     min_points: int = Field(..., ge=1)
     max_points: int = Field(..., ge=1)
-    time_window_start: datetime | None = Field(default=None)
+    time_window_start: datetime | None = Field(
+        default=None,
+        description="ISO-время начала экскурсии",
+        json_schema_extra={"format": "date-time"},
+    )
     must_include_poi_ids: list[uuid.UUID] = Field(default_factory=list)
 
 

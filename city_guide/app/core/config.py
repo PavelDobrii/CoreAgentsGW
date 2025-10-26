@@ -51,7 +51,9 @@ class Settings(BaseSettings):
             url = self.database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
         elif self.database_url.startswith("postgres://"):
             url = self.database_url.replace("postgres://", "postgresql+asyncpg://", 1)
-        elif self.database_url.startswith("sqlite+aiosqlite://") or self.database_url.startswith("sqlite://"):
+        elif self.database_url.startswith("sqlite+aiosqlite://"):
+            url = self.database_url
+        elif self.database_url.startswith("sqlite://"):
             url = self.database_url.replace("sqlite://", "sqlite+aiosqlite://", 1)
         else:
             raise ValueError("Unsupported database URL")

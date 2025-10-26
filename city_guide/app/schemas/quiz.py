@@ -17,7 +17,7 @@ class QuizAnswer(BaseModel):
 class QuizRequest(BaseModel):
     user_id: uuid.UUID
     answers: list[QuizAnswer]
-    user_context: 'UserRouteContext' | None = None
+    user_context: UserRouteContext | None = None
 
 
 class QuizResponse(BaseModel):
