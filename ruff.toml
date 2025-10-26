@@ -1,0 +1,9 @@
+line-length = 88
+target-version = "py310"
+
+[lint]
+extend-select = ["B", "C4", "I", "UP"]
+ignore = ["B008"]
+
+[lint.isort]
+known-first-party = ["city_guide", "aiosqlite"]

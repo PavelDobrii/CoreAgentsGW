@@ -1,33 +1,45 @@
 .PHONY: install run dev lint test format migrate seed
 
+PYTHON ?= python3
+PROJECT_ROOT := $(abspath $(CURDIR)/..)
+APP_HOST ?= 0.0.0.0
+APP_PORT ?= 8000
+
+export PYTHONPATH := $(PROJECT_ROOT)
+
 install:
-	poetry install --with dev
+	$(PYTHON) -m pip install --upgrade pip
+	$(PYTHON) -m pip install --upgrade -r $(PROJECT_ROOT)/.meta/packages
 
 run:
-	PYTHONPATH=.. poetry run uvicorn city_guide.app.main:app --host ${APP_HOST:-0.0.0.0} --port ${APP_PORT:-8000}
+	APP_HOST=$(APP_HOST) APP_PORT=$(APP_PORT) $(PYTHON) -m uvicorn city_guide.app.main:app --host $(APP_HOST) --port $(APP_PORT)
 
 dev:
-	PYTHONPATH=.. poetry run uvicorn city_guide.app.main:app --reload --host ${APP_HOST:-0.0.0.0} --port ${APP_PORT:-8000}
+	APP_HOST=$(APP_HOST) APP_PORT=$(APP_PORT) $(PYTHON) -m uvicorn city_guide.app.main:app --reload --host $(APP_HOST) --port $(APP_PORT)
 
 lint:
-	PYTHONPATH=.. poetry run ruff check city_guide && PYTHONPATH=.. poetry run black --check city_guide && PYTHONPATH=.. poetry run isort --check city_guide
+	$(PYTHON) -m ruff check city_guide
+	$(PYTHON) -m black --check city_guide
+	$(PYTHON) -m isort --check-only --profile black --line-length 88 city_guide
 
 format:
-	PYTHONPATH=.. poetry run black city_guide && PYTHONPATH=.. poetry run isort city_guide
+	$(PYTHON) -m black city_guide
+	$(PYTHON) -m isort --profile black --line-length 88 city_guide
 
 test:
-	PYTHONPATH=.. poetry run pytest -q
+	$(PYTHON) -m pytest -q
 
 migrate:
-	PYTHONPATH=.. poetry run alembic upgrade head
+	$(PYTHON) -m alembic upgrade head
 
 seed:
-	poetry run python - <<'PY'
-	from pathlib import Path
-	from sqlalchemy import create_engine, text
-	from city_guide.app.core.config import settings
-	engine = create_engine(settings.sync_database_url)
-	sql = Path('city_guide/dev/sql/seed_poi_vilnius.sql').read_text()
-	with engine.begin() as conn:
-	conn.execute(text(sql))
-	PY
+	$(PYTHON) - <<'PY'
+from pathlib import Path
+from sqlalchemy import create_engine, text
+from city_guide.app.core.config import settings
+
+engine = create_engine(settings.sync_database_url)
+sql = Path('city_guide/dev/sql/seed_poi_vilnius.sql').read_text()
+with engine.begin() as conn:
+    conn.execute(text(sql))
+PY
