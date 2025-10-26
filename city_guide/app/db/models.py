@@ -4,8 +4,16 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.types import JSON
+
+from ..core.config import settings
+
+if settings.database_url.startswith(("postgresql", "postgres")):
+    from sqlalchemy.dialects.postgresql import JSONB as JSONType
+else:
+    JSONType = JSON
 
 
 class Base(DeclarativeBase):
@@ -16,7 +24,7 @@ class UserProfile(Base):
     __tablename__ = "user_profiles"
 
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    context: Mapped[dict] = mapped_column(JSONB, default=dict)
+    context: Mapped[dict] = mapped_column(JSONType, default=dict)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
@@ -30,7 +38,7 @@ class RouteDraft(Base):
     duration_min: Mapped[int] = mapped_column(Integer, nullable=False)
     transport_mode: Mapped[str] = mapped_column(String(32), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
-    payload_json: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    payload_json: Mapped[dict] = mapped_column(JSONType, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False

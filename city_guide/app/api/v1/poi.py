@@ -19,6 +19,7 @@ async def suggest_poi(
     route_id: uuid.UUID = Query(..., description="Route identifier"),
     db: AsyncSession = Depends(get_db),
 ) -> SuggestionsResponse:
+    """Возвращает подборку дополнительных точек интереса для маршрута."""
     repo = RouteDraftRepository(db)
     draft = await repo.get_draft(route_id)
     if draft is None:

@@ -59,6 +59,7 @@ async def generate_route(
     payload: GenerateRouteRequest,
     db: AsyncSession = Depends(get_db),
 ) -> RouteDraftResponse:
+    """Генерирует черновик маршрута на основе предпочтений пользователя."""
     gpt_client = get_gpt_client()
     repo = RouteDraftRepository(db)
 
@@ -156,6 +157,7 @@ async def get_route(
     route_id: uuid.UUID = Path(..., description="Route identifier"),
     db: AsyncSession = Depends(get_db),
 ) -> RouteDraftResponse:
+    """Возвращает сохранённый маршрут по его идентификатору."""
     repo = RouteDraftRepository(db)
     draft = await repo.get_draft(route_id)
     if draft is None:

@@ -1,73 +1,76 @@
 # City Guide API
 
-City Guide API is a production-oriented FastAPI service that generates personalized travel routes using Google Maps data and GPT models.
+City Guide API — сервис на FastAPI, формирующий персональные прогулочные маршруты по городу.
 
-## Features
+## Возможности
 
-- FastAPI application with async SQLAlchemy and PostgreSQL
-- GPT-assisted POI selection and route ordering
-- Google Places and Distance Matrix integrations
-- Route constraint validation and persistence
-- Async-first architecture with uvicorn/uvloop
-- Extensive test suite and OpenAPI contract verification
-- Docker and docker-compose for local development
-- GitHub Actions workflow for linting and testing
+- Асинхронный стек: FastAPI, SQLAlchemy, PostgreSQL/SQLite для тестов.
+- Интеграция с GPT для выбора и упорядочивания точек интереса.
+- Поддержка Google Places и Distance Matrix (можно отключить).
+- Проверка ограничений маршрута и сохранение черновиков.
+- Docker/Compose для локального развёртывания.
+- Тесты Pytest и линтеры Ruff/Black/Isort.
 
-## Getting Started
-
-### Prerequisites
+## Требования
 
 - Python 3.10+
 - Poetry 1.7+
-- Docker & Docker Compose
+- Docker и Docker Compose (для развёртывания с PostgreSQL)
 
-### Installation
+## Подготовка окружения
 
-```bash
-poetry install
-```
+1. Установите зависимости:
+   ```bash
+   poetry install --with dev
+   ```
 
-### Environment Variables
+2. Создайте файл окружения:
+   ```bash
+   cp .env.example .env
+   ```
+   Обновите переменные подключения к БД и ключи внешних сервисов по необходимости.
 
-Copy `.env.example` to `.env` and adjust values as needed.
+### Настройка базы данных
 
-```bash
-cp .env.example .env
-```
+- **PostgreSQL (рекомендуется для продакшена)**:
+  1. Запустите инфраструктуру: `docker compose up -d`.
+  2. Примените миграции: `make migrate`.
+  3. Заполните тестовые данные: `make seed`.
 
-### Database
+- **SQLite (для тестов и отладки)**:
+  Никакой дополнительной настройки не требуется. Тесты автоматически создают файл `test_cityguide.db`.
 
-Run database migrations and seed data:
-
-```bash
-make migrate
-make seed
-```
-
-### Running the App
+## Запуск приложения
 
 ```bash
 make dev
 ```
 
-The API will be available at `http://localhost:8000`.
+По умолчанию сервис доступен на `http://localhost:8000`. Документация OpenAPI — `/docs`.
 
-### Testing
-
-```bash
-make test
-```
-
-### Linting
+## Тестирование и качество кода
 
 ```bash
-make lint
+make test    # юнит- и интеграционные тесты
+make lint    # статический анализ и проверка форматирования
+make format  # автоформатирование
 ```
 
-## Project Structure
+> Команды Make автоматически выставляют `PYTHONPATH=..`, чтобы пакеты `city_guide` и встроенный `aiosqlite` были видимы в среде Poetry.
 
-Refer to the `city_guide/` directory for application modules, Alembic migrations, and tests.
+## Работа с БД из Python
 
-## License
+Для управления миграциями используется Alembic (`make migrate`). Сидирование тестовых данных запускает скрипт `dev/sql/seed_poi_vilnius.sql` через синхронный движок.
+
+## Использование OpenAI и Google
+
+- Укажите `OPENAI_API_KEY` и `GPT_MODEL` для работы GPT-клиента.
+- Для обращений к Google API задайте `GOOGLE_MAPS_API_KEY`. Переменная `USE_GOOGLE_SOURCES` отключает внешние запросы, оставляя генерацию маршрута на локальных заглушках.
+
+## Примечание по aiosqlite
+
+В репозитории присутствует облегчённая реализация `aiosqlite`, обеспечивающая работу SQLAlchemy в тестах без доступа к PyPI. При развёртывании с PostgreSQL она не задействуется.
+
+## Лицензия
 
 MIT
