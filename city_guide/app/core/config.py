@@ -2,10 +2,43 @@ from __future__ import annotations
 
 import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from pydantic import Field
 from pydantic_settings import BaseSettings
+
+
+def _resolve_env_file() -> str:
+    """Return a deterministic path to the environment file.
+
+    PyCharm запускает скрипты из разных рабочих директорий. Чтобы не требовать
+    ручного указания переменной ``CITY_GUIDE_ENV`` в каждом конфиге, ищем
+    наиболее подходящее расположение ``.env`` относительно корня репозитория.
+
+    Порядок поиска:
+
+    1. Пользовательский путь из ``CITY_GUIDE_ENV`` (если задан).
+    2. ``<repo>/.env`` — удобно держать конфиги рядом с run-конфигурациями.
+    3. ``<repo>/city_guide/.env`` — историческое местоположение.
+
+    Если файл ещё не создан, возвращаем первый кандидат, чтобы Pydantic мог
+    работать с пустым значением и PyCharm предлагал создать файл в ожидаемом
+    месте.
+    """
+
+    env_override = os.getenv("CITY_GUIDE_ENV")
+    if env_override:
+        return env_override
+
+    project_root = Path(__file__).resolve().parents[2]
+    candidates = [project_root / ".env", project_root / "city_guide" / ".env"]
+
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+
+    return str(candidates[0])
 
 
 def _parse_bool(value: Any, default: bool = False) -> bool:
@@ -40,7 +73,7 @@ class Settings(BaseSettings):
     app_port: int = Field(default=8000, env="APP_PORT")
 
     class Config:
-        env_file = os.getenv("CITY_GUIDE_ENV", ".env")
+        env_file = _resolve_env_file()
         env_file_encoding = "utf-8"
 
     @property

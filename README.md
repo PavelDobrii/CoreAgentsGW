@@ -1,3 +1,24 @@
 # CoreAgents City Guide
 
-See [city_guide/README.md](city_guide/README.md) for full project details.
+Добро пожаловать в монорепозиторий CoreAgents. Основной сервис находится в
+директории [`city_guide`](city_guide/README.md). В этом файле собраны быстрые
+ссылки и чек-лист по подготовке рабочего окружения.
+
+## Быстрый старт
+
+1. Установите [Poetry 1.7+](https://python-poetry.org/docs/).
+2. Перейдите в папку `city_guide` и подтяните зависимости:
+   ```bash
+   cd city_guide
+   poetry install --with dev
+   ```
+3. Скопируйте файл окружения и подберите значения под себя:
+   ```bash
+   cp .env.example .env
+   ```
+   > Если предпочитаете хранить настройки в корне репозитория, создайте там
+   > `.env` — приложение найдёт его автоматически.
+4. Для запуска сервиса в отладке используйте скрипт `city_guide/app/debug.py`.
+
+Подробные инструкции по настройке PyCharm, работе с базой данных и внешними
+сервисами описаны в [README приложения](city_guide/README.md).
