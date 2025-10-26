@@ -23,6 +23,7 @@ async def test_openapi_contract(async_client):
 
     assert paths["/v1/quiz"]["post"]["summary"] == "Submit Quiz"
     assert paths["/v1/profile"]["get"]["summary"] == "Get Profile"
+    assert paths["/v1/profile"]["post"]["summary"] == "Create Profile"
     assert paths["/v1/routes:generate"]["post"]["summary"] == "Generate Route"
     assert paths["/v1/routes/{route_id}"]["get"]["summary"] == "Get Route"
 
