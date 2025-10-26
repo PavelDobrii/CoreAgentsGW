@@ -6,11 +6,12 @@
 
 ## Быстрый старт
 
-1. Установите [Poetry 1.7+](https://python-poetry.org/docs/).
-2. Перейдите в папку `city_guide` и подтяните зависимости:
+1. Убедитесь, что в WSL установлен Python 3.10+ и актуальный `pip`.
+2. Перейдите в папку `city_guide` и установите зависимости из `.meta/packages`:
    ```bash
    cd city_guide
-   poetry install --with dev
+   python -m pip install --upgrade pip
+   python -m pip install -r ../.meta/packages
    ```
 3. Скопируйте файл окружения и подберите значения под себя:
    ```bash
@@ -18,7 +19,8 @@
    ```
    > Если предпочитаете хранить настройки в корне репозитория, создайте там
    > `.env` — приложение найдёт его автоматически.
-4. Для запуска сервиса в отладке используйте скрипт `city_guide/app/debug.py`.
+4. Для запуска сервиса в отладке используйте конфигурацию `Python` с модулем
+   `city_guide.app.debug` или выполните `python -m city_guide.app.debug`.
 
 Подробные инструкции по настройке PyCharm, работе с базой данных и внешними
 сервисами описаны в [README приложения](city_guide/README.md).
