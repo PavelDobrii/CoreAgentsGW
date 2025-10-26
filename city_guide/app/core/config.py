@@ -78,7 +78,11 @@ class Settings(BaseSettings):
 
     @property
     def async_database_url(self) -> str:
-        if self.database_url.startswith("postgresql+"):
+        if self.database_url.startswith("postgresql+psycopg2://"):
+            url = self.database_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
+        elif self.database_url.startswith("postgresql+psycopg://"):
+            url = self.database_url.replace("postgresql+psycopg://", "postgresql+asyncpg://", 1)
+        elif self.database_url.startswith("postgresql+"):
             url = self.database_url
         elif self.database_url.startswith("postgresql://"):
             url = self.database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
@@ -96,6 +100,10 @@ class Settings(BaseSettings):
     def sync_database_url(self) -> str:
         if self.database_url.startswith("postgresql+asyncpg://"):
             return self.database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+        if self.database_url.startswith("postgresql+psycopg2://"):
+            return self.database_url.replace("postgresql+psycopg2://", "postgresql://", 1)
+        if self.database_url.startswith("postgresql+psycopg://"):
+            return self.database_url.replace("postgresql+psycopg://", "postgresql://", 1)
         if self.database_url.startswith("postgres://"):
             return self.database_url.replace("postgres://", "postgresql://", 1)
         if self.database_url.startswith("sqlite+aiosqlite://"):
