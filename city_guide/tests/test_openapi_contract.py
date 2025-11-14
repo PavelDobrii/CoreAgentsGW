@@ -14,6 +14,7 @@ async def test_openapi_contract(async_client):
         "/healthz",
         "/v1/quiz",
         "/v1/profile",
+        "/v1/profile/context",
         "/v1/prompts/route",
         "/v1/routes:generate",
         "/v1/routes/{route_id}",
@@ -23,7 +24,9 @@ async def test_openapi_contract(async_client):
 
     assert paths["/v1/quiz"]["post"]["summary"] == "Submit Quiz"
     assert paths["/v1/profile"]["get"]["summary"] == "Get Profile"
-    assert paths["/v1/profile"]["post"]["summary"] == "Create Profile"
+    assert paths["/v1/profile"]["put"]["summary"] == "Update Profile"
+    assert paths["/v1/profile/context"]["get"]["summary"] == "Get Profile Context"
+    assert paths["/v1/profile/context"]["post"]["summary"] == "Create Profile Context"
     assert paths["/v1/routes:generate"]["post"]["summary"] == "Generate Route"
     assert paths["/v1/routes/{route_id}"]["get"]["summary"] == "Get Route"
 

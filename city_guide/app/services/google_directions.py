@@ -3,7 +3,10 @@ from __future__ import annotations
 import logging
 from typing import Iterable
 
-import httpx
+try:  # pragma: no cover - optional dependency
+    import httpx
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    httpx = None
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ..core.config import settings
@@ -17,7 +20,7 @@ async def distance_matrix(points: Iterable[dict], mode: str) -> list[list[float]
     points_list = list(points)
     if not points_list:
         return []
-    if not settings.google_maps_api_key:
+    if not settings.google_maps_api_key or httpx is None:
         logger.info("Google Maps API key not configured, returning heuristic distances")
         return [[0 for _ in points_list] for _ in points_list]
 
