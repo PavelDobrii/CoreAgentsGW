@@ -46,6 +46,13 @@ class Database:
         for module_name in ("psycopg", "psycopg2"):
             try:
                 module = __import__(module_name)
+                if module_name == "psycopg2":
+                    # ``psycopg2`` exposes helpers such as ``extras`` from a
+                    # separate submodule, so import it eagerly and attach it
+                    # to the driver to match the API expected elsewhere in the
+                    # storage layer.
+                    extras_module = __import__(f"{module_name}.extras", fromlist=["extras"])
+                    setattr(module, "extras", extras_module)
                 self._postgres_driver = module
                 return module
             except ModuleNotFoundError:
@@ -133,4 +140,4 @@ class Database:
             connection.close()
 
 
-database = Database(settings.database_url, settings.testing)
+database = Database(settings.sync_database_url, settings.testing)
