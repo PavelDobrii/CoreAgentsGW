@@ -133,4 +133,4 @@ class Database:
             connection.close()
 
 
-database = Database(settings.database_url, settings.testing)
+database = Database(settings.sync_database_url, settings.testing)
