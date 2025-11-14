@@ -56,7 +56,7 @@ def register_routes(app: Application) -> None:
     user_repo = UserRepository()
 
     def _ensure_user(request: Request):
-        authorization = request.headers.get("Authorization")
+        authorization = request.headers.get("authorization")
         return deps.get_current_user(authorization)
 
     @app.route("GET", "/v1/profile", summary="Get Profile")
