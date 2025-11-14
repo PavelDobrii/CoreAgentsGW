@@ -1,4 +1,5 @@
 .env
+!city_guide/.env
 .idea/
 .vscode/
 .venv/

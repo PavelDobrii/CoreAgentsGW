@@ -2,6 +2,33 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+try:  # pragma: no cover - optional dependency in some environments
+    from dotenv import load_dotenv
+except ModuleNotFoundError:  # pragma: no cover - fallback used instead
+    load_dotenv = None
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+ENV_PATH = BASE_DIR / ".env"
+
+
+def _load_env_file(path: Path) -> None:
+    if load_dotenv is not None:
+        load_dotenv(path, override=False)
+        return
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip())
+
+
+if ENV_PATH.exists():
+    _load_env_file(ENV_PATH)
 
 
 def _bool(name: str, default: bool) -> bool:
