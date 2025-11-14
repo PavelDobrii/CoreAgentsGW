@@ -4,7 +4,7 @@ import uuid
 from dataclasses import replace
 from typing import Sequence
 
-from .models import DB, RouteDraft, RoutePoint, User, UserProfile
+from .entities import DB, RouteDraft, RoutePoint, User, UserProfile
 
 
 class UserRepository:
