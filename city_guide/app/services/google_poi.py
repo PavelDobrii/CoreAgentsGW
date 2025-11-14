@@ -3,7 +3,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import httpx
+try:  # pragma: no cover - optional dependency
+    import httpx
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    httpx = None
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ..core.config import settings
@@ -14,7 +17,7 @@ PLACES_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
 
 
 async def fetch_places(*, lat: float, lng: float, radius: int, keyword: str | None = None) -> list[dict[str, Any]]:
-    if not settings.google_maps_api_key:
+    if not settings.google_maps_api_key or httpx is None:
         logger.info("Google Maps API key not configured, returning empty list")
         return []
     params = {
