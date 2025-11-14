@@ -1,0 +1,36 @@
+.footerPlayer {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 640px;
+  z-index: 200;
+
+  bottom: 64px;
+  min-height: 48px;
+  padding: 0 var(--mantine-spacing-xs);
+}
+
+.inner {
+  position: relative;
+  display: flex;
+  gap: var(--mantine-spacing-sm);
+  padding: 0.25rem 0.25rem 0.5rem;
+  border-radius: var(--mantine-radius-md);
+  backdrop-filter: blur(10px);
+  background: linear-gradient(to bottom, var(--mantine-color-body) 0%, transparent 100%);
+
+  /*background-color: var(--mantine-color-body);*/
+  border: 1px solid var(--mantine-color-default-border);
+  border-bottom: 0;
+  box-shadow: 0 -6px 8px rgba(0, 0, 0, 0.05);
+}
+
+.progressBar {
+  position: absolute;
+  bottom: 0;
+  left: 4px;
+  right: 4px;
+}
+
+
