@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import asyncio
 import os
 import pathlib
 
 import pytest
-from httpx import AsyncClient
+from fastapi.testclient import TestClient
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_cityguide.db")
 os.environ.setdefault("ECHO_SQL", "false")
@@ -45,7 +46,62 @@ async def clean_database() -> None:
     yield
 
 
+class _ResponseWrapper:
+    def __init__(self, response):
+        self._response = response
+        self.status_code = response.status_code
+        self.headers = response.headers
+
+    def json(self):
+        return self._response.json()
+
+    @property
+    def text(self) -> str:
+        return self._response.text
+
+
+class _AsyncTestClient:
+    def __init__(self, client: TestClient):
+        self._client = client
+
+    async def request(self, method: str, url: str, **kwargs):
+        response = self._client.request(method, url, **kwargs)
+        return _ResponseWrapper(response)
+
+    async def get(self, url: str, **kwargs):
+        return await self.request("GET", url, **kwargs)
+
+    async def post(self, url: str, **kwargs):
+        return await self.request("POST", url, **kwargs)
+
+    async def put(self, url: str, **kwargs):
+        return await self.request("PUT", url, **kwargs)
+
+
 @pytest.fixture()
-async def async_client() -> AsyncClient:
-    async with AsyncClient(app=app, base_url="http://test") as client:
-        yield client
+async def async_client():
+    with TestClient(app) as client:
+        yield _AsyncTestClient(client)
+
+
+@pytest.fixture
+async def registered_user(async_client):
+    payload = {
+        "email": "demo.user@example.com",
+        "password": "SuperSecret123",
+        "firstName": "Demo",
+        "lastName": "User",
+        "phoneNumber": "+10000000000",
+        "country": "Lithuania",
+        "city": "Vilnius",
+    }
+    response = await async_client.post("/v1/register", json=payload)
+    assert response.status_code == 201
+    data = response.json()
+    return {
+        "email": payload["email"],
+        "password": payload["password"],
+        "headers": {"Authorization": f"Bearer {data['access_token']}"},
+        "tokens": data,
+        "user": data["user"],
+    }
