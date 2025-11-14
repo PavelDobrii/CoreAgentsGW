@@ -57,8 +57,14 @@ class Settings:
 
     openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
     gpt_model: str = os.getenv("GPT_MODEL", "gpt-4o-mini")
+    gpt_brainstorm_poi_model: str = os.getenv(
+        "GPT_BRAINSTORM_POI_MODEL",
+        os.getenv("GPT_MODEL", "gpt-4o-mini"),
+    )
+    brainstorm_poi_max_items: int = int(os.getenv("BRAINSTORM_POI_MAX_ITEMS", "30"))
 
     use_google_sources: bool = _bool("USE_GOOGLE_SOURCES", False)
+    google_maps_api_key: str | None = os.getenv("GOOGLE_MAPS_API_KEY")
 
     def __post_init__(self) -> None:
         if self.testing:

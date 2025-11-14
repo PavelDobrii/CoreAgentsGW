@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Sequence
+from typing import Any, Sequence
 
 from openai import AsyncOpenAI
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ..core.config import settings
+from ..schemas.poi import (
+    BrainstormPOIRequest,
+    BrainstormPOIResponse,
+    BrainstormedPOI,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +24,15 @@ class GPTClient:
         else:
             self.client = None
         self.model = settings.gpt_model
+        self.brainstorm_model = settings.gpt_brainstorm_poi_model or self.model
 
-    async def _completion(self, messages: list[dict[str, str]], response_format: dict | None = None) -> dict:
+    async def _completion(
+        self,
+        messages: list[dict[str, str]],
+        response_format: dict | None = None,
+        *,
+        model: str | None = None,
+    ) -> dict:
         if not self.client:
             raise RuntimeError("OpenAI client not configured")
         async for attempt in AsyncRetrying(
@@ -31,7 +43,7 @@ class GPTClient:
         ):
             with attempt:
                 response = await self.client.responses.create(
-                    model=self.model,
+                    model=model or self.model,
                     input=messages,
                     response_format=response_format or {"type": "json_object"},
                     temperature=0.2,
@@ -87,6 +99,97 @@ class GPTClient:
         except Exception as exc:  # noqa: BLE001
             logger.exception("GPT ordering failed, using fallback: %s", exc)
             return [node["poi_id"] for node in nodes]
+
+    async def brainstorm_poi(self, req: BrainstormPOIRequest) -> BrainstormPOIResponse:
+        if not self.client:
+            logger.info("OpenAI not configured, skipping POI brainstorming")
+            logger.info("Brainstormed %d POIs", 0)
+            return BrainstormPOIResponse(items=[])
+
+        prompt_sections: list[str] = [
+            "You are an expert travel planner. Brainstorm interesting points of interest for the traveler.",
+        ]
+
+        locality_parts: list[str] = []
+        if req.locality_id:
+            locality_parts.append(f"Locality ID: {req.locality_id}.")
+        if req.start_location:
+            locality_parts.append(
+                "Start location coordinates: "
+                f"lat={req.start_location.lat}, lng={req.start_location.lng}."
+            )
+        if locality_parts:
+            prompt_sections.append("Location context: " + " ".join(locality_parts))
+
+        if req.user_context:
+            prompt_sections.append(
+                "Traveler profile and interests: "
+                + json.dumps(req.user_context, ensure_ascii=False)
+            )
+
+        if req.route_options:
+            prompt_sections.append(
+                "Route preferences and constraints: "
+                + json.dumps(req.route_options, ensure_ascii=False)
+            )
+
+        prompt_sections.append(
+            (
+                "Return diverse POIs with human-friendly names, short descriptions, and priority scores. "
+                f"Respond with at most {settings.brainstorm_poi_max_items} POIs."
+            )
+        )
+
+        prompt = "\n".join(prompt_sections)
+        logger.debug("Brainstorm POI prompt: %s", prompt)
+
+        response_format: dict[str, Any] = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "brainstorm_poi_response",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "items": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "title": {"type": "string"},
+                                    "city": {"type": ["string", "null"]},
+                                    "country": {"type": ["string", "null"]},
+                                    "category": {"type": ["string", "null"]},
+                                    "description": {"type": ["string", "null"]},
+                                    "priority": {"type": ["number", "null"]},
+                                },
+                                "required": ["title"],
+                            },
+                        }
+                    },
+                    "required": ["items"],
+                },
+                "strict": True,
+            },
+        }
+
+        try:
+            data = await self._completion(
+                messages=[{"role": "user", "content": prompt}],
+                response_format=response_format,
+                model=self.brainstorm_model,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("GPT brainstorming failed: %s", exc)
+            logger.info("Brainstormed %d POIs", 0)
+            return BrainstormPOIResponse(items=[])
+
+        raw_items = data.get("items") or []
+        limited_items = raw_items[: settings.brainstorm_poi_max_items]
+        pois = [BrainstormedPOI.model_validate(item) for item in limited_items]
+
+        logger.info("Brainstormed %d POIs", len(pois))
+
+        return BrainstormPOIResponse(items=pois)
 
 
 def get_gpt_client() -> GPTClient:
