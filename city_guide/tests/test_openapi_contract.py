@@ -13,6 +13,9 @@ async def test_openapi_contract(async_client):
     expected_paths = {
         "/healthz",
         "/v1/quiz",
+        "/v1/login",
+        "/v1/register",
+        "/v1/refresh",
         "/v1/profile",
         "/v1/profile/context",
         "/v1/prompts/route",

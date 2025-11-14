@@ -7,7 +7,47 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import RouteDraft, RoutePoint, UserProfile
+from .models import RouteDraft, RoutePoint, User, UserProfile
+
+
+class UserRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def get_by_email(self, email: str) -> User | None:
+        stmt = select(User).where(User.email == email.lower())
+        result = await self.session.execute(stmt)
+        return result.scalars().first()
+
+    async def get_by_id(self, user_id: uuid.UUID) -> User | None:
+        return await self.session.get(User, user_id)
+
+    async def create_user(
+        self,
+        *,
+        email: str,
+        password_hash: str,
+        first_name: str | None = None,
+        last_name: str | None = None,
+        phone: str | None = None,
+        country: str | None = None,
+        city: str | None = None,
+        language: str | None = "en",
+    ) -> User:
+        user = User(
+            email=email.lower(),
+            password_hash=password_hash,
+            first_name=first_name,
+            last_name=last_name,
+            phone=phone,
+            country=country,
+            city=city,
+            language=language,
+        )
+        self.session.add(user)
+        await self.session.flush()
+        await self.session.refresh(user)
+        return user
 
 
 class UserProfileRepository:
