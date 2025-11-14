@@ -7,8 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...core.config import settings
-from ...core.deps import get_current_user, get_db
-from ...db.models import RouteDraft, RoutePoint as RoutePointModel, User
+from ...core.deps import get_db
+from ...db.models import RouteDraft, RoutePoint as RoutePointModel
 from ...db.repo import RouteDraftRepository
 from ...domain.constraint_validator import ConstraintValidator, ConstraintViolation
 from ...domain.geo import compute_eta_minutes
@@ -32,26 +32,28 @@ from ...services.gpt_client import get_gpt_client
 
 router = APIRouter(prefix="/v1", tags=["routes"])
 
+CURRENT_USER_ID = uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+
+
+def _get_current_user_id() -> uuid.UUID:
+    return CURRENT_USER_ID
+
 
 @router.get("/routes", response_model=TripListResponse, summary="List Trips")
-async def list_trips(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> TripListResponse:
+async def list_trips(db: AsyncSession = Depends(get_db)) -> TripListResponse:
     repo = RouteDraftRepository(db)
-    drafts = await repo.list_drafts_for_user(current_user.id)
+    drafts = await repo.list_drafts_for_user(_get_current_user_id())
     return [_trip_response_from_draft(draft) for draft in drafts]
 
 
 @router.get("/routes/{route_id}", response_model=TripResponse, summary="Get Trip")
 async def get_trip(
     route_id: uuid.UUID = Path(..., description="Route identifier"),
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> TripResponse:
     repo = RouteDraftRepository(db)
     draft = await repo.get_draft(route_id)
-    if draft is None or draft.user_id != current_user.id:
+    if draft is None or draft.user_id != _get_current_user_id():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Route not found")
     return _trip_response_from_draft(draft)
 
@@ -59,16 +61,15 @@ async def get_trip(
 @router.post("/routes", response_model=TripResponse, status_code=status.HTTP_201_CREATED, summary="Create Trip")
 async def create_trip(
     payload: TripCreateUpdate,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> TripResponse:
     repo = RouteDraftRepository(db)
     duration = _duration_from_options(payload.route_options) or 180
     trip_payload = _merge_trip_payload({}, payload)
     draft = await repo.create_draft(
-        user_id=current_user.id,
-        city=payload.locality_id or current_user.city or "unknown",
-        language=current_user.language or "en",
+        user_id=_get_current_user_id(),
+        city=payload.locality_id or "unknown",
+        language="en",
         duration_min=duration,
         transport_mode="walking",
         status=TripStatus.created.value,
@@ -86,12 +87,11 @@ async def create_trip(
 async def update_trip(
     payload: TripCreateUpdate,
     route_id: uuid.UUID = Path(..., description="Route identifier"),
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> TripResponse:
     repo = RouteDraftRepository(db)
     draft = await repo.get_draft(route_id)
-    if draft is None or draft.user_id != current_user.id:
+    if draft is None or draft.user_id != _get_current_user_id():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Route not found")
     duration = _duration_from_options(payload.route_options)
     updated_payload = _merge_trip_payload(draft.payload_json or {}, payload)
@@ -112,7 +112,6 @@ async def update_trip(
 async def generate_trip(
     payload: GenerateTripOptions,
     route_id: uuid.UUID = Path(..., description="Route identifier"),
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> GenerateTripResponse:
     if payload.id != route_id:
@@ -120,7 +119,7 @@ async def generate_trip(
 
     repo = RouteDraftRepository(db)
     draft = await repo.get_draft(route_id)
-    if draft is None or draft.user_id != current_user.id:
+    if draft is None or draft.user_id != _get_current_user_id():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Route not found")
 
     generate_request = _build_generate_request_from_draft(draft)

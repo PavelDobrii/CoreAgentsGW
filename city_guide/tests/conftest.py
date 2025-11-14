@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import asyncio
 import os
 import pathlib
 
@@ -82,26 +81,3 @@ class _AsyncTestClient:
 async def async_client():
     with TestClient(app) as client:
         yield _AsyncTestClient(client)
-
-
-@pytest.fixture
-async def registered_user(async_client):
-    payload = {
-        "email": "demo.user@example.com",
-        "password": "SuperSecret123",
-        "firstName": "Demo",
-        "lastName": "User",
-        "phoneNumber": "+10000000000",
-        "country": "Lithuania",
-        "city": "Vilnius",
-    }
-    response = await async_client.post("/v1/register", json=payload)
-    assert response.status_code == 201
-    data = response.json()
-    return {
-        "email": payload["email"],
-        "password": payload["password"],
-        "headers": {"Authorization": f"Bearer {data['access_token']}"},
-        "tokens": data,
-        "user": data["user"],
-    }
