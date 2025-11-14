@@ -229,7 +229,7 @@ def register_routes(app: Application) -> None:
     profiles = UserProfileRepository()
 
     def _require_user(request: Request):
-        authorization = request.headers.get("Authorization")
+        authorization = request.headers.get("authorization")
         if not authorization:
             raise HTTPException(401, "Not authenticated")
         return deps.get_current_user(authorization)

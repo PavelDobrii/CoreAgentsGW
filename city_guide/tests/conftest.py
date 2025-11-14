@@ -29,7 +29,7 @@ def _create_registered_user(client: TestClient):
     return {
         "email": payload["email"],
         "password": payload["password"],
-        "headers": {"Authorization": f"Bearer {data['access_token']}"},
+        "headers": {"authorization": f"Bearer {data['access_token']}"},
         "tokens": data,
         "user": data["user"],
     }
