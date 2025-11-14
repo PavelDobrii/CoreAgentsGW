@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import os
+
 import pytest
+
+os.environ.setdefault("CITY_GUIDE_TESTING", "1")
+os.environ.setdefault("REQUIRE_POSTGRES", "0")
+os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
 
 from city_guide.app.core import deps
 from city_guide.app.http import TestClient

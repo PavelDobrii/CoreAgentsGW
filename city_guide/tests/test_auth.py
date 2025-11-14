@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from city_guide.app.db.repo import UserRepository
+
 
 def test_register_login_and_refresh(client):
     register_payload = {
@@ -35,3 +37,16 @@ def test_login_rejects_invalid_credentials(client, registered_user):
         "/v1/login", json={"email": registered_user["email"], "password": "wrong"}
     )
     assert response.status_code == 401
+
+
+def test_register_persists_user_in_database(client):
+    payload = {
+        "email": "persist.user@example.com",
+        "password": "StrongPass!23",
+    }
+    response = client.post("/v1/register", json=payload)
+    assert response.status_code == 201
+    repo = UserRepository()
+    user = repo.get_by_email(payload["email"])
+    assert user is not None
+    assert user.email == payload["email"].lower()

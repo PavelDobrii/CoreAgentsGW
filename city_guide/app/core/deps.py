@@ -1,18 +1,22 @@
 from __future__ import annotations
 
+import os
 import uuid
 
-from . import security
-from ..db.entities import DB, User
+from ..db import database
 from ..db.repo import UserRepository
+from . import security
+from .config import settings
 
 
 def reset_state() -> None:
-    DB.reset()
+    security.reset_tokens()
+    if settings.testing or os.getenv("PYTEST_CURRENT_TEST"):
+        database.reset()
 
 
 def get_db():  # compatibility shim
-    return DB
+    return UserRepository()
 
 
 def override_engine(_: str) -> None:  # pragma: no cover - kept for API compatibility
@@ -28,7 +32,7 @@ def _extract_token(header: str | None) -> str:
     return parts[1]
 
 
-def get_current_user(authorization: str | None) -> User:
+def get_current_user(authorization: str | None):
     token = _extract_token(authorization)
     payload = security.decode_access_token(token)
     user_id = uuid.UUID(payload["sub"])
