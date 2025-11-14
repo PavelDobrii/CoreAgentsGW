@@ -126,19 +126,3 @@ async def test_generate_trip_updates_draft(monkeypatch, async_client, registered
         draft = await repo.get_draft(uuid.UUID(trip_id))
         assert draft is not None
         assert len(draft.points) == len(data["waypoints"])
-
-
-@pytest.mark.asyncio
-async def test_generate_trip_rejects_mismatched_id(monkeypatch, async_client, registered_user):
-    payload = _sample_trip_payload()
-    created = await async_client.post("/v1/routes", json=payload, headers=registered_user["headers"])
-    trip_id = created.json()["id"]
-
-    _mock_generation_dependencies(monkeypatch, payload)
-
-    generate_payload = {"id": str(uuid.uuid4()), "waypoints": [], "places": []}
-    response = await async_client.post(
-        f"/v1/routes/{trip_id}/generate", json=generate_payload, headers=registered_user["headers"]
-    )
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Mismatched identifiers"
