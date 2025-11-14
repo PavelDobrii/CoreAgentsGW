@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
-
-router = APIRouter()
+from ...http import Application, Request, json_response
 
 
-@router.get("/healthz", summary="Health Check")
-async def healthcheck() -> dict[str, str]:
-    return {"status": "ok"}
+def register_routes(app: Application) -> None:
+    @app.route("GET", "/healthz", summary="Health Check")
+    def healthcheck(_: Request):
+        return json_response({"status": "ok"})

@@ -1,77 +1,50 @@
 from __future__ import annotations
 
+import hashlib
 import uuid
-from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import jwt
-from passlib.context import CryptContext
-
-from .config import settings
+from ..db.models import DB
 
 
 class InvalidToken(Exception):
-    """Raised when a JWT cannot be validated."""
-
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    """Raised when a token cannot be validated."""
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     if not hashed_password:
         return False
-    return pwd_context.verify(plain_password, hashed_password)
+    return hash_password(plain_password) == hashed_password
 
 
-def _create_token(*, subject: uuid.UUID, expires_delta: timedelta, token_type: str) -> str:
-    now = datetime.now(timezone.utc)
-    payload = {
-        "sub": str(subject),
-        "type": token_type,
-        "iat": int(now.timestamp()),
-        "exp": int((now + expires_delta).timestamp()),
-    }
-    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+def _store_token(store: dict[str, uuid.UUID], subject: uuid.UUID) -> str:
+    token = uuid.uuid4().hex
+    store[token] = subject
+    return token
 
 
 def create_access_token(subject: uuid.UUID) -> str:
-    return _create_token(
-        subject=subject,
-        expires_delta=timedelta(minutes=settings.access_token_exp_minutes),
-        token_type="access",
-    )
+    return _store_token(DB.access_tokens, subject)
 
 
 def create_refresh_token(subject: uuid.UUID) -> str:
-    return _create_token(
-        subject=subject,
-        expires_delta=timedelta(minutes=settings.refresh_token_exp_minutes),
-        token_type="refresh",
-    )
+    return _store_token(DB.refresh_tokens, subject)
 
 
-def _decode_token(token: str, *, expected_type: str) -> dict[str, Any]:
-    try:
-        payload = jwt.decode(
-            token,
-            settings.jwt_secret_key,
-            algorithms=[settings.jwt_algorithm],
-        )
-    except jwt.PyJWTError as exc:  # noqa: PERF203
-        raise InvalidToken from exc
-
-    if payload.get("type") != expected_type:
+def _decode_token(token: str, store: dict[str, uuid.UUID]) -> dict[str, Any]:
+    user_id = store.get(token)
+    if user_id is None:
         raise InvalidToken
-    return payload
+    return {"sub": str(user_id)}
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
-    return _decode_token(token, expected_type="access")
+    return _decode_token(token, DB.access_tokens)
 
 
 def decode_refresh_token(token: str) -> dict[str, Any]:
-    return _decode_token(token, expected_type="refresh")
+    return _decode_token(token, DB.refresh_tokens)

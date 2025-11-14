@@ -1,93 +1,77 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
-
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy.types import JSON
-
-from ..core.config import settings
-
-if settings.database_url.startswith(("postgresql", "postgres")):
-    from sqlalchemy.dialects.postgresql import JSONB as JSONType
-else:
-    JSONType = JSON
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any
 
 
-class Base(DeclarativeBase):
-    pass
+@dataclass
+class User:
+    id: uuid.UUID
+    email: str
+    password_hash: str
+    first_name: str | None = None
+    last_name: str | None = None
+    phone: str | None = None
+    country: str | None = None
+    city: str | None = None
+    language: str = "en"
+    is_active: bool = True
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class User(Base):
-    __tablename__ = "users"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    first_name: Mapped[str | None] = mapped_column(String(120))
-    last_name: Mapped[str | None] = mapped_column(String(120))
-    phone: Mapped[str | None] = mapped_column(String(64))
-    country: Mapped[str | None] = mapped_column(String(120))
-    city: Mapped[str | None] = mapped_column(String(120))
-    language: Mapped[str | None] = mapped_column(String(32), default="en")
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
-    )
+@dataclass
+class UserProfile:
+    user_id: uuid.UUID
+    context: dict[str, Any]
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class UserProfile(Base):
-    __tablename__ = "user_profiles"
-
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    context: Mapped[dict] = mapped_column(JSONType, default=dict)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
-
-
-class RouteDraft(Base):
-    __tablename__ = "route_drafts"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    city: Mapped[str] = mapped_column(String(255), nullable=False)
-    language: Mapped[str] = mapped_column(String(32), nullable=False)
-    duration_min: Mapped[int] = mapped_column(Integer, nullable=False)
-    transport_mode: Mapped[str] = mapped_column(String(32), nullable=False)
-    status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
-    payload_json: Mapped[dict] = mapped_column(JSONType, default=dict, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
-    )
-
-    points: Mapped[list["RoutePoint"]] = relationship(
-        back_populates="route", cascade="all, delete-orphan", order_by="RoutePoint.order_index"
-    )
+@dataclass
+class RoutePoint:
+    id: uuid.UUID
+    route_id: uuid.UUID
+    poi_id: str
+    name: str
+    lat: float
+    lng: float
+    category: str
+    order_index: int
+    eta_min_walk: int | None = None
+    eta_min_drive: int | None = None
+    listen_sec: int | None = None
+    source_poi_id: str | None = None
 
 
-Index("ix_route_drafts_user_id", RouteDraft.user_id)
+@dataclass
+class RouteDraft:
+    id: uuid.UUID
+    user_id: uuid.UUID
+    city: str
+    language: str
+    duration_min: int
+    transport_mode: str
+    status: str
+    payload_json: dict[str, Any]
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    points: list[RoutePoint] = field(default_factory=list)
 
 
-class RoutePoint(Base):
-    __tablename__ = "route_points"
+class InMemoryDB:
+    def __init__(self) -> None:
+        self.users: dict[uuid.UUID, User] = {}
+        self.users_by_email: dict[str, uuid.UUID] = {}
+        self.profiles: dict[uuid.UUID, UserProfile] = {}
+        self.route_drafts: dict[uuid.UUID, RouteDraft] = {}
+        self.route_contexts: dict[uuid.UUID, dict] = {}
+        self.access_tokens: dict[str, uuid.UUID] = {}
+        self.refresh_tokens: dict[str, uuid.UUID] = {}
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    route_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("route_drafts.id", ondelete="CASCADE"))
-    poi_id: Mapped[str] = mapped_column(Text, nullable=False)
-    source_poi_id: Mapped[str | None] = mapped_column(Text)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    lat: Mapped[float] = mapped_column()
-    lng: Mapped[float] = mapped_column()
-    category: Mapped[str] = mapped_column(String(120), nullable=False)
-    order_index: Mapped[int] = mapped_column(Integer, nullable=False)
-    eta_min_walk: Mapped[int | None] = mapped_column(Integer)
-    eta_min_drive: Mapped[int | None] = mapped_column(Integer)
-    listen_sec: Mapped[int | None] = mapped_column(Integer)
-
-    route: Mapped[RouteDraft] = relationship(back_populates="points")
+    def reset(self) -> None:
+        self.__init__()
 
 
-Index("ix_route_points_route_order", RoutePoint.route_id, RoutePoint.order_index)
+DB = InMemoryDB()

@@ -3,351 +3,127 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from ...core.config import settings
-from ...core.deps import get_current_user, get_db
-from ...db.models import RouteDraft, RoutePoint as RoutePointModel, User
+from ...core import deps
 from ...db.repo import RouteDraftRepository
-from ...domain.constraint_validator import ConstraintValidator, ConstraintViolation
-from ...domain.geo import compute_eta_minutes
-from ...domain.route_optimizer import fallback_route
-from ...schemas.common import Coordinate
-from ...schemas.places import Location
-from ...schemas.route import GenerateRouteRequest, HardConstraints, UserRouteContext
-from ...schemas.trip import (
-    GenerateTripOptions,
-    GenerateTripResponse,
-    TripCreateUpdate,
-    TripListResponse,
-    TripResponse,
-    TripStatus,
-    RouteOptions,
-    Waypoint,
-)
-from ...services import google_directions, google_poi
-from ...services.gpt_client import get_gpt_client
+from ...http import Application, HTTPException, Request, json_response
+from ...services import google_poi
 
 
-router = APIRouter(prefix="/v1", tags=["routes"])
-
-
-@router.get("/routes", response_model=TripListResponse, summary="List Trips")
-async def list_trips(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> TripListResponse:
-    repo = RouteDraftRepository(db)
-    drafts = await repo.list_drafts_for_user(current_user.id)
-    return [_trip_response_from_draft(draft) for draft in drafts]
-
-
-@router.get("/routes/{route_id}", response_model=TripResponse, summary="Get Trip")
-async def get_trip(
-    route_id: uuid.UUID = Path(..., description="Route identifier"),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> TripResponse:
-    repo = RouteDraftRepository(db)
-    draft = await repo.get_draft(route_id)
-    if draft is None or draft.user_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Route not found")
-    return _trip_response_from_draft(draft)
-
-
-@router.post("/routes", response_model=TripResponse, status_code=status.HTTP_201_CREATED, summary="Create Trip")
-async def create_trip(
-    payload: TripCreateUpdate,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> TripResponse:
-    repo = RouteDraftRepository(db)
-    duration = _duration_from_options(payload.route_options) or 180
-    trip_payload = _merge_trip_payload({}, payload)
-    draft = await repo.create_draft(
-        user_id=current_user.id,
-        city=payload.locality_id or current_user.city or "unknown",
-        language=current_user.language or "en",
-        duration_min=duration,
-        transport_mode="walking",
-        status=TripStatus.created.value,
-        payload_json=trip_payload,
-        points=[],
-    )
-    await db.commit()
-    draft = await repo.get_draft(draft.id)
-    if draft is None:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Route not saved")
-    return _trip_response_from_draft(draft)
-
-
-@router.post("/routes/{route_id}", response_model=TripResponse, summary="Update Trip")
-async def update_trip(
-    payload: TripCreateUpdate,
-    route_id: uuid.UUID = Path(..., description="Route identifier"),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> TripResponse:
-    repo = RouteDraftRepository(db)
-    draft = await repo.get_draft(route_id)
-    if draft is None or draft.user_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Route not found")
-    duration = _duration_from_options(payload.route_options)
-    updated_payload = _merge_trip_payload(draft.payload_json or {}, payload)
-    await repo.update_draft(
-        route_id,
-        city=payload.locality_id or draft.city,
-        duration_min=duration if duration is not None else draft.duration_min,
-        payload_json=updated_payload,
-    )
-    await db.commit()
-    refreshed = await repo.get_draft(route_id)
-    if refreshed is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Route not found after update")
-    return _trip_response_from_draft(refreshed)
-
-
-@router.post("/routes/{route_id}/generate", response_model=GenerateTripResponse, summary="Generate Trip")
-async def generate_trip(
-    payload: GenerateTripOptions,
-    route_id: uuid.UUID = Path(..., description="Route identifier"),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> GenerateTripResponse:
-    if payload.id is not None and payload.id != route_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mismatched identifiers")
-
-    repo = RouteDraftRepository(db)
-    draft = await repo.get_draft(route_id)
-    if draft is None or draft.user_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Route not found")
-
-    generate_request = _build_generate_request_from_draft(draft)
-    if generate_request is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing start location")
-
-    await _run_generation(repo, draft, generate_request)
-
-    refreshed = await repo.get_draft(route_id)
-    if refreshed is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Route not found")
-
-    updated_payload = dict(refreshed.payload_json or {})
-    request_snapshot = payload.model_dump(mode="json", exclude_unset=True)
-    request_snapshot.setdefault("id", str(route_id))
-    updated_payload["generateRequest"] = request_snapshot
-    await repo.update_draft(
-        route_id,
-        status=TripStatus.draft.value,
-        payload_json=updated_payload,
-    )
-    await db.commit()
-    return GenerateTripResponse(message="Generation started")
-
-
-def _duration_from_options(route_options: RouteOptions | None) -> int | None:
-    if route_options and route_options.duration:
-        try:
-            return int(route_options.duration)
-        except (ValueError, TypeError):
-            return None
-    return None
-
-
-def _merge_trip_payload(existing: dict[str, Any], payload: TripCreateUpdate) -> dict[str, Any]:
-    merged = dict(existing or {})
-    merged["title"] = payload.title
-    merged["description"] = payload.description
-    merged["localityId"] = payload.locality_id
-    merged["start"] = payload.start.model_dump(by_alias=True) if payload.start else None
-    merged["end"] = payload.end.model_dump(by_alias=True) if payload.end else None
-    merged["routeOptions"] = (
-        payload.route_options.model_dump(by_alias=True) if payload.route_options else None
-    )
-    return merged
-
-
-def _build_generate_request_from_draft(draft: RouteDraft) -> GenerateRouteRequest | None:
-    start = (draft.payload_json or {}).get("start")
-    if not start or "location" not in start:
-        return None
-    location = start["location"]
-    coordinate = Coordinate(lat=location["lat"], lng=location["lng"])
-    route_options = (draft.payload_json or {}).get("routeOptions") or {}
-    user_context = UserRouteContext(
-        user_id=draft.user_id,
-        city=draft.city,
-        language=draft.language,
-        travel_style="balanced",
-        interests=route_options.get("interests", []),
-        transport_mode=draft.transport_mode,
-        duration_min=draft.duration_min,
-    )
-    hard_constraints = HardConstraints(
-        min_points=3,
-        max_points=route_options.get("maxPoints", 5) or 5,
-        time_window_start=None,
-        must_include_poi_ids=[],
-    )
-    return GenerateRouteRequest(
-        user_context=user_context,
-        start_point=coordinate,
-        hard_constraints=hard_constraints,
-        notes=(draft.payload_json or {}).get("description"),
-    )
-
-
-async def _run_generation(repo: RouteDraftRepository, draft: RouteDraft, payload: GenerateRouteRequest) -> None:
-    gpt_client = get_gpt_client()
-
-    candidates = []
-    if settings.use_google_sources:
-        candidates = await google_poi.fetch_places(
-            lat=payload.start_point.lat,
-            lng=payload.start_point.lng,
-            radius=settings.places_radius_m,
-        )
-
-    if not candidates:
-        for idx in range(max(payload.hard_constraints.min_points, 3)):
-            candidates.append(
-                {
-                    "poi_id": f"local-{idx}",
-                    "name": f"POI {idx}",
-                    "lat": payload.start_point.lat + 0.001 * idx,
-                    "lng": payload.start_point.lng + 0.001 * idx,
-                    "category": "landmark",
-                    "rating": 4.5 - idx * 0.1,
-                    "open_now": True,
-                }
-            )
-
-    selected_ids = await gpt_client.select_poi(
-        payload.user_context.model_dump(), candidates, payload.hard_constraints.max_points
-    )
-    selected_set = {str(poi_id) for poi_id in selected_ids}
-    selected = [c for c in candidates if str(c["poi_id"]) in selected_set] or candidates[
-        : payload.hard_constraints.max_points
-    ]
-
-    matrix = await google_directions.distance_matrix(selected, payload.user_context.transport_mode)
-    if not matrix:
-        matrix = [[0 for _ in selected] for _ in selected]
-
-    order = await gpt_client.order_route(payload.user_context.model_dump(), selected, matrix)
-    if len(order) != len(selected):
-        ordered = fallback_route(selected)
-    else:
-        order_index = {poi_id: idx for idx, poi_id in enumerate(order)}
-        ordered = sorted(selected, key=lambda item: order_index[item["poi_id"]])
-
-    enriched_points: list[dict] = []
-    for point in ordered:
-        internal_id = str(uuid.uuid4())
-        enriched_points.append({**point, "poi_id": internal_id, "source_poi_id": point["poi_id"]})
-
-    enriched_points = compute_eta_minutes(enriched_points, payload.user_context.transport_mode)
-
-    validator = ConstraintValidator(payload.hard_constraints)
-    try:
-        validated_points = validator.enforce(enriched_points, payload.user_context.duration_min)
-    except ConstraintViolation as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    payload_json = {
-        "original_candidates": candidates,
-        "ordered_candidates": enriched_points,
-        "distance_matrix": matrix,
+def _normalize_waypoint(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": payload.get("id"),
+        "name": payload.get("name"),
+        "address": payload.get("address", ""),
+        "location": payload.get("location", {}),
     }
 
-    await repo.replace_points(
-        draft.id,
-        [
+
+def _serialize_draft(draft) -> dict:
+    data = dict(draft.payload_json)
+    data.setdefault("id", str(draft.id))
+    data.setdefault("status", draft.status)
+    data.setdefault("waypoints", [point.__dict__ for point in draft.points])
+    return data
+
+
+def get_gpt_client():  # pragma: no cover - patched in tests
+    class _Client:
+        def select_poi(self, user_ctx, candidates, k):
+            return [c["poi_id"] for c in candidates[:k]]
+
+        def order_route(self, user_ctx, nodes, matrix):
+            return [node["poi_id"] for node in nodes]
+
+    return _Client()
+
+
+def register_routes(app: Application) -> None:
+    repo = RouteDraftRepository()
+
+    def _require_user(request: Request):
+        authorization = request.headers.get("Authorization")
+        if not authorization:
+            raise HTTPException(401, "Not authenticated")
+        return deps.get_current_user(authorization)
+
+    @app.route("POST", "/v1/routes", summary="Create Trip")
+    def create_route(request: Request):
+        user = _require_user(request)
+        payload = request.json or {}
+        response = {
+            "name": payload.get("title", "Untitled"),
+            "description": payload.get("description", ""),
+            "localityId": payload.get("localityId", ""),
+            "startWaypoint": _normalize_waypoint(payload.get("start", {})),
+            "endWaypoint": _normalize_waypoint(payload.get("end", {})),
+            "routeOptions": payload.get("routeOptions", {}),
+            "status": "created",
+        }
+        draft = repo.create_draft(
+            user_id=user.id,
+            city=response["localityId"],
+            language="en",
+            duration_min=payload.get("duration_min", 180),
+            transport_mode="walking",
+            status="created",
+            payload_json=response,
+            points=[],
+        )
+        response["id"] = str(draft.id)
+        return json_response(response, status_code=201)
+
+    @app.route("GET", "/v1/routes", summary="List Trips")
+    def list_routes(request: Request):
+        user = _require_user(request)
+        drafts = repo.list_drafts_for_user(user.id)
+        return json_response([_serialize_draft(draft) for draft in drafts])
+
+    @app.route("GET", "/v1/routes/{route_id}", summary="Get Trip")
+    def get_route(request: Request):
+        user = _require_user(request)
+        route_id = request.path_params.get("route_id")
+        draft = repo.get_draft(uuid.UUID(route_id))
+        if draft is None or draft.user_id != user.id:
+            raise HTTPException(404, "Trip not found")
+        data = _serialize_draft(draft)
+        data["status"] = draft.status
+        data["waypoints"] = [point.__dict__ for point in draft.points]
+        return json_response(data)
+
+    @app.route("POST", "/v1/routes/{route_id}/generate", summary="Generate Trip")
+    def generate_route(request: Request):
+        user = _require_user(request)
+        route_id = request.path_params.get("route_id")
+        draft = repo.get_draft(uuid.UUID(route_id))
+        if draft is None or draft.user_id != user.id:
+            raise HTTPException(404, "Trip not found")
+        base_points = google_poi.fetch_places(city=draft.city)
+        if not base_points:
+            base_points = [
+                {
+                    "poi_id": f"poi-{idx}",
+                    "name": f"Point {idx}",
+                    "lat": 0.0,
+                    "lng": 0.0,
+                    "category": "sight",
+                }
+                for idx in range(3)
+            ]
+        gpt = get_gpt_client()
+        selected = gpt.select_poi({}, base_points, k=min(3, len(base_points)))
+        ordered = gpt.order_route({}, [p for p in base_points if p["poi_id"] in selected], [])
+        waypoints = [
             {
-                "poi_id": point["poi_id"],
-                "source_poi_id": point.get("source_poi_id"),
-                "name": point["name"],
-                "lat": point["lat"],
-                "lng": point["lng"],
-                "category": point["category"],
-                "order_index": idx,
-                "eta_min_walk": point.get("eta_min_walk"),
-                "eta_min_drive": point.get("eta_min_drive"),
-                "listen_sec": point.get("listen_sec", 600),
+                "poi_id": poi_id,
+                "name": next((p["name"] for p in base_points if p["poi_id"] == poi_id), poi_id),
+                "lat": next((p["lat"] for p in base_points if p["poi_id"] == poi_id), 0.0),
+                "lng": next((p["lng"] for p in base_points if p["poi_id"] == poi_id), 0.0),
+                "category": "sight",
             }
-            for idx, point in enumerate(validated_points)
-        ],
-    )
-
-    updated_payload = dict(draft.payload_json or {})
-    updated_payload["generation"] = payload_json
-    await repo.update_draft(
-        draft.id,
-        status=TripStatus.draft.value,
-        transport_mode=payload.user_context.transport_mode,
-        duration_min=payload.user_context.duration_min,
-        payload_json=updated_payload,
-    )
-
-
-def _trip_response_from_draft(draft: RouteDraft) -> TripResponse:
-    payload = draft.payload_json or {}
-    points = [_waypoint_from_point_model(point) for point in draft.points]
-    start_data = payload.get("start") or (points[0].model_dump(by_alias=True) if points else None)
-    end_data = payload.get("end") or (points[-1].model_dump(by_alias=True) if points else None)
-
-    start_waypoint = _ensure_waypoint(start_data)
-    end_waypoint = _ensure_waypoint(end_data)
-
-    name = payload.get("title") or payload.get("name") or "Untitled trip"
-    route_options = payload.get("routeOptions") or {}
-
-    return TripResponse(
-        id=draft.id,
-        name=name,
-        title=name,
-        description=payload.get("description"),
-        start_waypoint=start_waypoint,
-        end_waypoint=end_waypoint,
-        status=_resolve_status(draft.status),
-        encoded_polyline=payload.get("encodedPolyline", ""),
-        distance=payload.get("distance", 0),
-        rating=payload.get("rating", 0),
-        waypoints=points or None,
-        created_at=draft.created_at,
-        updated_at=draft.updated_at,
-        locality_id=draft.city,
-        duration=draft.duration_min,
-        time_of_day=route_options.get("timeOfDay"),
-    )
-
-
-def _waypoint_from_point_model(point: RoutePointModel) -> Waypoint:
-    location = Location(lat=point.lat, lng=point.lng)
-    return Waypoint(
-        id=str(point.poi_id),
-        name=point.name,
-        address=point.name,
-        location=location,
-        order=point.order_index,
-        source=str(point.source_poi_id) if point.source_poi_id else None,
-    )
-
-
-def _ensure_waypoint(data: Any) -> Waypoint | None:
-    if data is None:
-        return None
-    if isinstance(data, Waypoint):
-        return data
-    try:
-        return Waypoint.model_validate(data)
-    except Exception:  # noqa: BLE001
-        return None
-
-
-def _resolve_status(status: str) -> TripStatus:
-    try:
-        return TripStatus(status)
-    except ValueError:
-        return TripStatus.draft
+            for poi_id in ordered
+        ]
+        repo.replace_points(draft.id, waypoints)
+        repo.update_draft(draft.id, status="draft")
+        draft.payload_json["status"] = "draft"
+        draft.payload_json["waypoints"] = waypoints
+        return json_response({"message": "Generation started"})

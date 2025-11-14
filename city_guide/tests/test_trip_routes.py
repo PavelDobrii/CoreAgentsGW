@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
-
-from city_guide.app.core import deps
 from city_guide.app.db.repo import RouteDraftRepository
 
 
@@ -33,10 +30,9 @@ def _sample_trip_payload() -> dict:
     }
 
 
-@pytest.mark.asyncio
-async def test_create_trip_returns_trip_response(async_client, registered_user):
+def test_create_trip_returns_trip_response(client, registered_user):
     payload = _sample_trip_payload()
-    response = await async_client.post("/v1/routes", json=payload, headers=registered_user["headers"])
+    response = client.post("/v1/routes", json=payload, headers=registered_user["headers"])
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == payload["title"]
@@ -45,19 +41,18 @@ async def test_create_trip_returns_trip_response(async_client, registered_user):
     assert data["startWaypoint"]["name"] == payload["start"]["name"]
 
 
-@pytest.mark.asyncio
-async def test_list_and_get_trip(async_client, registered_user):
+def test_list_and_get_trip(client, registered_user):
     payload = _sample_trip_payload()
-    created = await async_client.post("/v1/routes", json=payload, headers=registered_user["headers"])
+    created = client.post("/v1/routes", json=payload, headers=registered_user["headers"])
     trip_id = created.json()["id"]
 
-    list_response = await async_client.get("/v1/routes", headers=registered_user["headers"])
+    list_response = client.get("/v1/routes", headers=registered_user["headers"])
     assert list_response.status_code == 200
     items = list_response.json()
     assert len(items) == 1
     assert items[0]["id"] == trip_id
 
-    detail_response = await async_client.get(
+    detail_response = client.get(
         f"/v1/routes/{trip_id}", headers=registered_user["headers"]
     )
     assert detail_response.status_code == 200
@@ -65,15 +60,15 @@ async def test_list_and_get_trip(async_client, registered_user):
 
 
 class _StubGPTClient:
-    async def select_poi(self, user_ctx, candidates, k):
+    def select_poi(self, user_ctx, candidates, k):
         return [c["poi_id"] for c in candidates[:k]]
 
-    async def order_route(self, user_ctx, nodes, matrix):
+    def order_route(self, user_ctx, nodes, matrix):
         return [node["poi_id"] for node in nodes]
 
 
 def _mock_generation_dependencies(monkeypatch, payload):
-    async def fake_fetch_places(**kwargs):
+    def fake_fetch_places(**kwargs):
         base_lat = payload["start"]["location"]["lat"]
         base_lng = payload["start"]["location"]["lng"]
         return [
@@ -89,7 +84,7 @@ def _mock_generation_dependencies(monkeypatch, payload):
             for idx in range(3)
         ]
 
-    async def fake_distance_matrix(points, mode):
+    def fake_distance_matrix(points, mode):
         size = len(points)
         return [[0 for _ in range(size)] for _ in range(size)]
 
@@ -98,22 +93,21 @@ def _mock_generation_dependencies(monkeypatch, payload):
     monkeypatch.setattr("city_guide.app.api.v1.routes.get_gpt_client", lambda: _StubGPTClient())
 
 
-@pytest.mark.asyncio
-async def test_generate_trip_updates_draft(monkeypatch, async_client, registered_user):
+def test_generate_trip_updates_draft(monkeypatch, client, registered_user):
     payload = _sample_trip_payload()
-    created = await async_client.post("/v1/routes", json=payload, headers=registered_user["headers"])
+    created = client.post("/v1/routes", json=payload, headers=registered_user["headers"])
     trip_id = created.json()["id"]
 
     _mock_generation_dependencies(monkeypatch, payload)
 
     generate_payload = {"waypoints": [], "places": []}
-    response = await async_client.post(
+    response = client.post(
         f"/v1/routes/{trip_id}/generate", json=generate_payload, headers=registered_user["headers"]
     )
     assert response.status_code == 200
     assert response.json()["message"] == "Generation started"
 
-    detail_response = await async_client.get(
+    detail_response = client.get(
         f"/v1/routes/{trip_id}", headers=registered_user["headers"]
     )
     data = detail_response.json()
@@ -121,8 +115,7 @@ async def test_generate_trip_updates_draft(monkeypatch, async_client, registered
     assert data["waypoints"] is not None
     assert len(data["waypoints"]) >= 1
 
-    async with deps.SessionLocal() as session:
-        repo = RouteDraftRepository(session)
-        draft = await repo.get_draft(uuid.UUID(trip_id))
-        assert draft is not None
-        assert len(draft.points) == len(data["waypoints"])
+    repo = RouteDraftRepository()
+    draft = repo.get_draft(uuid.UUID(trip_id))
+    assert draft is not None
+    assert len(draft.points) == len(data["waypoints"])
