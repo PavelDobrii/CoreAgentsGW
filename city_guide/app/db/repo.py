@@ -3,11 +3,51 @@ from __future__ import annotations
 import uuid
 from typing import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import RouteDraft, RoutePoint, UserProfile
+from .models import RouteDraft, RoutePoint, User, UserProfile
+
+
+class UserRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def get_by_email(self, email: str) -> User | None:
+        stmt = select(User).where(User.email == email.lower())
+        result = await self.session.execute(stmt)
+        return result.scalars().first()
+
+    async def get_by_id(self, user_id: uuid.UUID) -> User | None:
+        return await self.session.get(User, user_id)
+
+    async def create_user(
+        self,
+        *,
+        email: str,
+        password_hash: str,
+        first_name: str | None = None,
+        last_name: str | None = None,
+        phone: str | None = None,
+        country: str | None = None,
+        city: str | None = None,
+        language: str | None = "en",
+    ) -> User:
+        user = User(
+            email=email.lower(),
+            password_hash=password_hash,
+            first_name=first_name,
+            last_name=last_name,
+            phone=phone,
+            country=country,
+            city=city,
+            language=language,
+        )
+        self.session.add(user)
+        await self.session.flush()
+        await self.session.refresh(user)
+        return user
 
 
 class UserProfileRepository:
@@ -80,6 +120,65 @@ class RouteDraftRepository:
         result = await self.session.execute(stmt)
         draft = result.scalars().first()
         return draft
+
+    async def list_drafts_for_user(self, user_id: uuid.UUID) -> list[RouteDraft]:
+        stmt = (
+            select(RouteDraft)
+            .options(selectinload(RouteDraft.points))
+            .where(RouteDraft.user_id == user_id)
+            .order_by(RouteDraft.created_at.desc())
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars())
+
+    async def update_draft(
+        self,
+        route_id: uuid.UUID,
+        *,
+        city: str | None = None,
+        language: str | None = None,
+        duration_min: int | None = None,
+        transport_mode: str | None = None,
+        status: str | None = None,
+        payload_json: dict | None = None,
+    ) -> RouteDraft | None:
+        draft = await self.session.get(RouteDraft, route_id)
+        if draft is None:
+            return None
+        if city is not None:
+            draft.city = city
+        if language is not None:
+            draft.language = language
+        if duration_min is not None:
+            draft.duration_min = duration_min
+        if transport_mode is not None:
+            draft.transport_mode = transport_mode
+        if status is not None:
+            draft.status = status
+        if payload_json is not None:
+            draft.payload_json = payload_json
+        await self.session.flush()
+        await self.session.refresh(draft)
+        return draft
+
+    async def replace_points(self, route_id: uuid.UUID, points: Sequence[dict]) -> None:
+        await self.session.execute(delete(RoutePoint).where(RoutePoint.route_id == route_id))
+        for order_index, point in enumerate(points):
+            route_point = RoutePoint(
+                route_id=route_id,
+                poi_id=str(point["poi_id"]),
+                name=point["name"],
+                lat=point["lat"],
+                lng=point["lng"],
+                category=point.get("category", "unknown"),
+                order_index=point.get("order_index", order_index),
+                eta_min_walk=point.get("eta_min_walk"),
+                eta_min_drive=point.get("eta_min_drive"),
+                listen_sec=point.get("listen_sec"),
+                source_poi_id=point.get("source_poi_id"),
+            )
+            self.session.add(route_point)
+        await self.session.flush()
 
     async def list_points(self, route_id: uuid.UUID) -> list[RoutePoint]:
         stmt = select(RoutePoint).where(RoutePoint.route_id == route_id).order_by(RoutePoint.order_index)

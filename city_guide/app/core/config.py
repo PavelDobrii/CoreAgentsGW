@@ -72,6 +72,11 @@ class Settings(BaseSettings):
     app_host: str = Field(default="0.0.0.0", env="APP_HOST")
     app_port: int = Field(default=8000, env="APP_PORT")
 
+    jwt_secret_key: str = Field(default="super-secret-key", env="JWT_SECRET_KEY")
+    jwt_algorithm: str = Field(default="HS256", env="JWT_ALGORITHM")
+    access_token_exp_minutes: int = Field(default=30, env="ACCESS_TOKEN_EXPIRE_MINUTES")
+    refresh_token_exp_minutes: int = Field(default=60 * 24 * 7, env="REFRESH_TOKEN_EXPIRE_MINUTES")
+
     class Config:
         env_file = _resolve_env_file()
         env_file_encoding = "utf-8"
