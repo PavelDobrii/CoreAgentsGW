@@ -34,9 +34,9 @@ def _sample_trip_payload() -> dict:
 
 
 @pytest.mark.asyncio
-async def test_create_trip_returns_trip_response(async_client):
+async def test_create_trip_returns_trip_response(async_client, registered_user):
     payload = _sample_trip_payload()
-    response = await async_client.post("/v1/routes", json=payload)
+    response = await async_client.post("/v1/routes", json=payload, headers=registered_user["headers"])
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == payload["title"]
@@ -46,18 +46,20 @@ async def test_create_trip_returns_trip_response(async_client):
 
 
 @pytest.mark.asyncio
-async def test_list_and_get_trip(async_client):
+async def test_list_and_get_trip(async_client, registered_user):
     payload = _sample_trip_payload()
-    created = await async_client.post("/v1/routes", json=payload)
+    created = await async_client.post("/v1/routes", json=payload, headers=registered_user["headers"])
     trip_id = created.json()["id"]
 
-    list_response = await async_client.get("/v1/routes")
+    list_response = await async_client.get("/v1/routes", headers=registered_user["headers"])
     assert list_response.status_code == 200
     items = list_response.json()
     assert len(items) == 1
     assert items[0]["id"] == trip_id
 
-    detail_response = await async_client.get(f"/v1/routes/{trip_id}")
+    detail_response = await async_client.get(
+        f"/v1/routes/{trip_id}", headers=registered_user["headers"]
+    )
     assert detail_response.status_code == 200
     assert detail_response.json()["id"] == trip_id
 
@@ -71,9 +73,9 @@ class _StubGPTClient:
 
 
 @pytest.mark.asyncio
-async def test_generate_trip_updates_draft(monkeypatch, async_client):
+async def test_generate_trip_updates_draft(monkeypatch, async_client, registered_user):
     payload = _sample_trip_payload()
-    created = await async_client.post("/v1/routes", json=payload)
+    created = await async_client.post("/v1/routes", json=payload, headers=registered_user["headers"])
     trip_id = created.json()["id"]
 
     async def fake_fetch_places(**kwargs):
@@ -101,11 +103,15 @@ async def test_generate_trip_updates_draft(monkeypatch, async_client):
     monkeypatch.setattr("city_guide.app.api.v1.routes.get_gpt_client", lambda: _StubGPTClient())
 
     generate_payload = {"id": trip_id, "waypoints": [], "places": []}
-    response = await async_client.post(f"/v1/routes/{trip_id}/generate", json=generate_payload)
+    response = await async_client.post(
+        f"/v1/routes/{trip_id}/generate", json=generate_payload, headers=registered_user["headers"]
+    )
     assert response.status_code == 200
     assert response.json()["message"] == "Generation started"
 
-    detail_response = await async_client.get(f"/v1/routes/{trip_id}")
+    detail_response = await async_client.get(
+        f"/v1/routes/{trip_id}", headers=registered_user["headers"]
+    )
     data = detail_response.json()
     assert data["status"] == "draft"
     assert data["waypoints"] is not None

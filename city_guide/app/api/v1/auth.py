@@ -14,6 +14,7 @@ from ...schemas.profile import ProfileResponse
 from . import profile as profile_module
 
 router = APIRouter(prefix="/v1", tags=["auth"])
+compat_router = APIRouter(prefix="", tags=["auth"], include_in_schema=False)
 
 
 async def _ensure_profile(repo: UserProfileRepository, user: User) -> ProfileResponse:
@@ -71,8 +72,7 @@ async def login(payload: LoginData, db: AsyncSession = Depends(get_db)) -> AuthR
     return AuthResponse(access_token=access_token, refresh_token=refresh_token, user=profile)
 
 
-@router.post("/refresh", response_model=Tokens)
-async def refresh(payload: RefreshRequest, db: AsyncSession = Depends(get_db)) -> Tokens:
+async def _refresh_tokens(payload: RefreshRequest, db: AsyncSession) -> Tokens:
     try:
         decoded = security.decode_refresh_token(payload.refresh_token)
     except security.InvalidToken as exc:  # noqa: PERF203
@@ -91,3 +91,15 @@ async def refresh(payload: RefreshRequest, db: AsyncSession = Depends(get_db)) -
 
     access_token, refresh_token = _issue_tokens(user.id)
     return Tokens(access_token=access_token, refresh_token=refresh_token)
+
+
+@router.post("/refresh", response_model=Tokens)
+async def refresh(payload: RefreshRequest, db: AsyncSession = Depends(get_db)) -> Tokens:
+    return await _refresh_tokens(payload, db)
+
+
+@compat_router.post("/refresh", response_model=Tokens)
+async def refresh_without_prefix(payload: RefreshRequest, db: AsyncSession = Depends(get_db)) -> Tokens:
+    """Compatibility shim for the frontend's absolute `/refresh` call."""
+
+    return await _refresh_tokens(payload, db)

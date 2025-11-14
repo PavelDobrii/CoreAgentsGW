@@ -4,14 +4,13 @@ import uuid
 
 import pytest
 
-from city_guide.app.api.v1 import profile as profile_module
-
 
 @pytest.mark.asyncio
-async def test_profile_returns_default_and_allows_updates(async_client):
-    response = await async_client.get("/v1/profile")
+async def test_profile_returns_default_and_allows_updates(async_client, registered_user):
+    headers = registered_user["headers"]
+    response = await async_client.get("/v1/profile", headers=headers)
     assert response.status_code == 200
-    assert response.json() == profile_module.DEFAULT_PROFILE_TEMPLATE.model_dump(by_alias=True)
+    assert response.json() == registered_user["user"]
 
     update_payload = {
         "city": "Kaunas",
@@ -23,13 +22,13 @@ async def test_profile_returns_default_and_allows_updates(async_client):
         "region": "Kaunas County",
     }
 
-    response = await async_client.put("/v1/profile", json=update_payload)
+    response = await async_client.put("/v1/profile", json=update_payload, headers=headers)
     assert response.status_code == 200
     data = response.json()
     for key, value in update_payload.items():
         assert data[key] == value
 
-    response = await async_client.get("/v1/profile")
+    response = await async_client.get("/v1/profile", headers=headers)
     assert response.status_code == 200
     assert response.json() == data
 

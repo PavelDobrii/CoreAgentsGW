@@ -39,16 +39,16 @@ async def get_current_user(
     try:
         payload = security.decode_access_token(token)
     except security.InvalidToken as exc:  # noqa: PERF203
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid token") from exc
 
     user_id = payload.get("sub")
     try:
         user_uuid = uuid.UUID(str(user_id))
     except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid token") from exc
 
     repo = UserRepository(db)
     user = await repo.get_by_id(user_uuid)
     if user is None or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive user")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
     return user
