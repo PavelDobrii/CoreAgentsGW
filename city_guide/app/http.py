@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import asyncio
+import inspect
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List
 from urllib.parse import parse_qs
@@ -108,7 +110,7 @@ class Application:
                 json_body = json.loads(body.decode())
             except json.JSONDecodeError:
                 json_body = body.decode()
-        response = self.handle_request(
+        response = await self.handle_request(
             scope.get("method", "GET"),
             scope.get("path", "/"),
             json_body=json_body,
@@ -168,7 +170,7 @@ class Application:
                 return route, params
         raise HTTPException(404, "Not Found")
 
-    def handle_request(
+    async def handle_request(
         self,
         method: str,
         path: str,
@@ -183,6 +185,8 @@ class Application:
         request = Request(method, path, headers, params, json_body, path_params)
         try:
             response = route.handler(request)
+            if inspect.isawaitable(response):
+                response = await response
         except HTTPException as exc:  # pragma: no cover - exercised indirectly
             return Response(exc.status_code, {"detail": exc.detail})
         return response
@@ -209,7 +213,15 @@ class TestClient:
                 json_body = json.loads(json_body)
             except json.JSONDecodeError:
                 pass
-        response = self.app.handle_request(method, url, json_body=json_body, headers=headers, params=params)
+        response = asyncio.run(
+            self.app.handle_request(
+                method,
+                url,
+                json_body=json_body,
+                headers=headers,
+                params=params,
+            )
+        )
         response.headers = response.headers or {}
         return response
 
