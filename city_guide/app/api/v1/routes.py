@@ -18,11 +18,27 @@ def _normalize_waypoint(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _serialize_point(point) -> dict[str, Any]:
+    return {
+        "id": str(point.id),
+        "poi_id": point.poi_id,
+        "name": point.name,
+        "lat": point.lat,
+        "lng": point.lng,
+        "category": point.category,
+        "order_index": point.order_index,
+        "eta_min_walk": point.eta_min_walk,
+        "eta_min_drive": point.eta_min_drive,
+        "listen_sec": point.listen_sec,
+        "source_poi_id": point.source_poi_id,
+    }
+
+
 def _serialize_draft(draft) -> dict:
     data = dict(draft.payload_json)
     data.setdefault("id", str(draft.id))
     data.setdefault("status", draft.status)
-    data.setdefault("waypoints", [point.__dict__ for point in draft.points])
+    data.setdefault("waypoints", [_serialize_point(point) for point in draft.points])
     return data
 
 
@@ -87,7 +103,7 @@ def register_routes(app: Application) -> None:
             raise HTTPException(404, "Trip not found")
         data = _serialize_draft(draft)
         data["status"] = draft.status
-        data["waypoints"] = [point.__dict__ for point in draft.points]
+        data["waypoints"] = [_serialize_point(point) for point in draft.points]
         return json_response(data)
 
     @app.route("POST", "/v1/routes/{route_id}/generate", summary="Generate Trip")
@@ -123,7 +139,8 @@ def register_routes(app: Application) -> None:
             for poi_id in ordered
         ]
         repo.replace_points(draft.id, waypoints)
-        repo.update_draft(draft.id, status="draft")
-        draft.payload_json["status"] = "draft"
-        draft.payload_json["waypoints"] = waypoints
+        updated_payload = dict(draft.payload_json)
+        updated_payload["status"] = "draft"
+        updated_payload["waypoints"] = waypoints
+        repo.update_draft(draft.id, status="draft", payload_json=updated_payload)
         return json_response({"message": "Generation started"})
