@@ -2,133 +2,117 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from ...api.dependencies import build_default_context
+from ...core import deps, security
+from ...db.repo import UserProfileRepository, UserRepository
+from ...http import Application, HTTPException, Request, json_response
 
-from ...core.deps import get_current_user, get_db
-from ...db.models import User
-from ...db.repo import UserProfileRepository
-from ...schemas.profile import ProfileResponse, ProfileUpdate
-from ...schemas.route import UserRouteContext
-from ..dependencies import build_default_context
-
-router = APIRouter(prefix="/v1", tags=["profile"])
-
-PROFILE_CONTEXT_KEY = "profile"
+PROFILE_KEY = "profile"
 
 
-def build_default_profile(user: User) -> ProfileResponse:
-    return ProfileResponse(
-        id=user.id,
-        email=user.email,
-        first_name=user.first_name or "",
-        last_name=user.last_name or "",
-        phone=user.phone or "",
-        country=user.country or "",
-        city=user.city or "",
-        is_active=user.is_active,
-        language=user.language or "en",
-        interests=[],
-        travel_style="balanced",
-    )
+def build_default_profile(user) -> dict:
+    return {
+        "id": str(user.id),
+        "email": user.email,
+        "firstName": user.first_name or "",
+        "lastName": user.last_name or "",
+        "phone": user.phone or "",
+        "country": user.country or "",
+        "city": user.city or "",
+        "isActive": user.is_active,
+        "language": user.language or "en",
+        "gender": None,
+        "age": None,
+        "region": None,
+        "interests": [],
+        "travelStyle": "balanced",
+    }
 
 
-def load_profile_from_context(context: dict | None, user: User) -> ProfileResponse:
+def load_profile_from_context(context: dict | None, user) -> dict:
     base = build_default_profile(user)
     if not context:
         return base
-    data = context.get(PROFILE_CONTEXT_KEY)
-    if not data:
+    stored = context.get(PROFILE_KEY)
+    if not stored:
         return base
-    stored = ProfileResponse.model_validate(data)
-    stored_data = stored.model_dump(exclude_unset=False)
-    stored_data["id"] = user.id
-    stored_data["email"] = user.email
-    return base.model_copy(update=stored_data)
+    merged = dict(base)
+    merged.update(stored)
+    merged["id"] = str(user.id)
+    merged["email"] = user.email
+    return merged
 
 
-async def persist_profile(
-    repo: UserProfileRepository,
-    *,
-    user_id: uuid.UUID,
-    profile: ProfileResponse,
-    context: dict | None,
-) -> None:
-    snapshot = dict(context or {})
-    snapshot.setdefault("user_context", build_default_context(user_id).model_dump(mode="json"))
-    snapshot[PROFILE_CONTEXT_KEY] = profile.model_dump(by_alias=True, exclude_none=True)
-    await repo.upsert_profile(user_id, snapshot)
+def persist_profile(repo: UserProfileRepository, user_id: uuid.UUID, profile: dict) -> None:
+    current = repo.get_profile(user_id)
+    snapshot = dict(current.context if current else {})
+    snapshot.setdefault("user_context", build_default_context(user_id))
+    snapshot[PROFILE_KEY] = profile
+    repo.upsert_profile(user_id, snapshot)
 
 
-@router.get("/profile", summary="Get Profile", response_model=ProfileResponse)
-async def get_profile(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> ProfileResponse:
-    repo = UserProfileRepository(db)
-    stored = await repo.get_profile(current_user.id)
-    if stored is None:
-        profile = build_default_profile(current_user)
-        await persist_profile(repo, user_id=current_user.id, profile=profile, context={})
-        await db.commit()
-        return profile
-    return load_profile_from_context(stored.context, current_user)
+def register_routes(app: Application) -> None:
+    profile_repo = UserProfileRepository()
+    user_repo = UserRepository()
 
+    def _ensure_user(request: Request):
+        authorization = request.headers.get("Authorization")
+        return deps.get_current_user(authorization)
 
-@router.put("/profile", summary="Update Profile", response_model=ProfileResponse)
-async def update_profile(
-    payload: ProfileUpdate,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> ProfileResponse:
-    repo = UserProfileRepository(db)
-    stored = await repo.get_profile(current_user.id)
-    context = stored.context if stored else {}
-    current = load_profile_from_context(context, current_user)
-    update_data = payload.model_dump(exclude_unset=True)
-    updated = current.model_copy(update=update_data)
-    if payload.city:
-        current_user.city = payload.city
-    if payload.language:
-        current_user.language = payload.language
-    await persist_profile(repo, user_id=current_user.id, profile=updated, context=context)
-    await db.commit()
-    return updated
+    @app.route("GET", "/v1/profile", summary="Get Profile")
+    def get_profile(request: Request):
+        user = _ensure_user(request)
+        stored = profile_repo.get_profile(user.id)
+        if stored is None:
+            profile = build_default_profile(user)
+            persist_profile(profile_repo, user.id, profile)
+            return json_response(profile)
+        return json_response(load_profile_from_context(stored.context, user))
 
+    @app.route("PUT", "/v1/profile", summary="Update Profile")
+    def update_profile(request: Request):
+        user = _ensure_user(request)
+        payload = request.json or {}
+        stored = profile_repo.get_profile(user.id)
+        context = stored.context if stored else {}
+        current = load_profile_from_context(context, user)
+        updated = dict(current)
+        updated.update({k: v for k, v in payload.items() if v is not None})
+        if payload.get("city"):
+            user.city = payload["city"]
+        if payload.get("language"):
+            user.language = payload["language"]
+        persist_profile(profile_repo, user.id, updated)
+        user_repo.save_user(user)
+        return json_response(updated)
 
-@router.get(
-    "/profile/context",
-    summary="Get Profile Context",
-    response_model=UserRouteContext,
-)
-async def get_profile_context(
-    user_id: uuid.UUID = Query(..., description="User identifier"),
-    db: AsyncSession = Depends(get_db),
-) -> UserRouteContext:
-    repo = UserProfileRepository(db)
-    profile = await repo.get_profile(user_id)
-    if profile is None:
-        return build_default_context(user_id)
-    context = profile.context or {}
-    return build_default_context(user_id).model_copy(update=context.get("user_context", {}))
+    @app.route("GET", "/v1/profile/context", summary="Get Profile Context")
+    def get_profile_context(request: Request):
+        user_id = request.params.get("user_id")
+        if not user_id:
+            raise HTTPException(400, "user_id is required")
+        try:
+            user_uuid = uuid.UUID(user_id)
+        except ValueError as exc:  # pragma: no cover
+            raise HTTPException(400, "Invalid user_id") from exc
+        stored = profile_repo.get_profile(user_uuid)
+        if stored is None:
+            return json_response(build_default_context(user_uuid))
+        context = stored.context.get("user_context", {})
+        return json_response(build_default_context(user_uuid) | context)
 
-
-@router.post(
-    "/profile/context",
-    summary="Create Profile Context",
-    response_model=UserRouteContext,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_profile_context(
-    payload: UserRouteContext,
-    db: AsyncSession = Depends(get_db),
-) -> UserRouteContext:
-    repo = UserProfileRepository(db)
-    context = {"user_context": payload.model_dump(mode="json")}
-    stored = await repo.get_profile(payload.user_id)
-    if stored and stored.context:
-        context = dict(stored.context)
-        context["user_context"] = payload.model_dump(mode="json")
-    await repo.upsert_profile(payload.user_id, context)
-    await db.commit()
-    return payload
+    @app.route("POST", "/v1/profile/context", summary="Create Profile Context", include_in_schema=True)
+    def create_profile_context(request: Request):
+        payload = request.json or {}
+        try:
+            user_uuid = uuid.UUID(str(payload["user_id"]))
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(400, "user_id is required") from exc
+        base = build_default_context(user_uuid)
+        base.update({k: v for k, v in payload.items() if k in base})
+        stored = profile_repo.get_profile(user_uuid)
+        context = stored.context if stored else {}
+        context = dict(context)
+        context["user_context"] = base
+        profile_repo.upsert_profile(user_uuid, context)
+        return json_response(base, status_code=201)

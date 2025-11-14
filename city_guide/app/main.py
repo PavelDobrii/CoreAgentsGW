@@ -1,26 +1,32 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-
+from .http import Application, Request, json_response
 from .api.v1 import auth, health, places, poi, profile, prompts, quiz, routes
 
-app = FastAPI(title="City Guide API", version="1.0.0")
+app = Application()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+for module in (health, auth, quiz, profile, prompts, routes, poi, places):
+    module.register_routes(app)
 
-app.include_router(health.router)
-app.include_router(auth.router)
-app.include_router(auth.compat_router)
-app.include_router(quiz.router)
-app.include_router(profile.router)
-app.include_router(prompts.router)
-app.include_router(routes.router)
-app.include_router(poi.router)
-app.include_router(places.router)
+OPENAPI_COMPONENTS = {
+    "schemas": {
+        "HardConstraints": {
+            "type": "object",
+            "properties": {
+                "time_window_start": {"type": "string", "format": "date-time"},
+                "must_include_poi_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}},
+            },
+        },
+        "TripResponse": {
+            "type": "object",
+            "properties": {"id": {"type": "string", "format": "uuid"}},
+        },
+    }
+}
+
+app.set_components(OPENAPI_COMPONENTS)
+
+
+@app.route("GET", "/openapi.json", summary="OpenAPI", include_in_schema=False)
+def openapi(_: Request):
+    return json_response(app.openapi())
