@@ -4,7 +4,7 @@ import hashlib
 import uuid
 from typing import Any
 
-from ..db.models import DB
+from ..db.entities import DB
 
 
 class InvalidToken(Exception):

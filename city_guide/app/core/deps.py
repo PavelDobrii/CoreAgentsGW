@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 from . import security
-from ..db.models import DB, User
+from ..db.entities import DB, User
 from ..db.repo import UserRepository
 
 

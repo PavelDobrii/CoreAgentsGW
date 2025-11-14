@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List
+from urllib.parse import parse_qs
 
 
 @dataclass
@@ -82,6 +83,70 @@ class Application:
 
     def set_components(self, components: dict[str, Any]) -> None:
         self.components = components
+
+    async def __call__(self, scope: dict[str, Any], receive: Callable[..., Any], send: Callable[..., Any]) -> None:
+        if scope["type"] == "lifespan":
+            await self._handle_lifespan(receive, send)
+            return
+        if scope["type"] != "http":
+            raise HTTPException(500, "Unsupported scope type")
+        body = b""
+        more_body = True
+        while more_body:
+            message = await receive()
+            if message["type"] == "http.request":
+                body += message.get("body", b"")
+                more_body = message.get("more_body", False)
+            elif message["type"] == "http.disconnect":
+                return
+        headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
+        query = parse_qs(scope.get("query_string", b"").decode())
+        params = {k: values[-1] if values else "" for k, values in query.items()}
+        json_body: Any = None
+        if body:
+            try:
+                json_body = json.loads(body.decode())
+            except json.JSONDecodeError:
+                json_body = body.decode()
+        response = self.handle_request(
+            scope.get("method", "GET"),
+            scope.get("path", "/"),
+            json_body=json_body,
+            headers=headers,
+            params=params,
+        )
+        await self._send_response(send, response)
+
+    async def _handle_lifespan(self, receive: Callable[..., Any], send: Callable[..., Any]) -> None:
+        while True:
+            message = await receive()
+            if message["type"] == "lifespan.startup":
+                await send({"type": "lifespan.startup.complete"})
+            elif message["type"] == "lifespan.shutdown":
+                await send({"type": "lifespan.shutdown.complete"})
+                return
+
+    async def _send_response(self, send: Callable[..., Any], response: Response) -> None:
+        headers = response.headers or {}
+        body = response.body
+        if isinstance(body, (dict, list)):
+            body_bytes = json.dumps(body).encode()
+            if "content-type" not in {k.lower() for k in headers}:
+                headers = {**headers, "content-type": "application/json"}
+        elif isinstance(body, bytes):
+            body_bytes = body
+        elif body is None:
+            body_bytes = b""
+        else:
+            body_bytes = str(body).encode()
+        await send(
+            {
+                "type": "http.response.start",
+                "status": response.status_code,
+                "headers": [(k.encode("latin-1"), v.encode("latin-1")) for k, v in headers.items()],
+            }
+        )
+        await send({"type": "http.response.body", "body": body_bytes})
 
     def match(self, method: str, path: str) -> tuple[Route, dict[str, str]]:
         method = method.upper()
