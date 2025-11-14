@@ -1,6 +1,4 @@
 from __future__ import annotations
-
-import asyncio
 import logging
 import uuid
 from typing import Any
@@ -279,7 +277,7 @@ def register_routes(app: Application) -> None:
         return json_response(data)
 
     @app.route("POST", "/v1/routes/{route_id}/generate", summary="Generate Trip")
-    def generate_route(request: Request):
+    async def generate_route(request: Request):
         user = _require_user(request)
         route_id = request.path_params.get("route_id")
         draft = repo.get_draft(uuid.UUID(route_id))
@@ -290,7 +288,7 @@ def register_routes(app: Application) -> None:
         user_context = profile.context if profile else None
         gpt = get_gpt_client()
         try:
-            waypoints = asyncio.run(_run_generation(draft, payload, user_context, gpt))
+            waypoints = await _run_generation(draft, payload, user_context, gpt)
         except Exception as exc:  # noqa: BLE001
             logger.exception("Route generation failed for %s: %s", route_id, exc)
             raise HTTPException(500, "Failed to generate trip") from exc

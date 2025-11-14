@@ -13,8 +13,8 @@ if TYPE_CHECKING:  # pragma: no cover - type checking helper
 else:  # pragma: no cover - runtime fallback
     AsyncClient = Any
 
-from app.core.config import settings
-from app.schemas.poi import BrainstormedPOI
+from city_guide.app.core.config import settings
+from city_guide.app.schemas.poi import BrainstormedPOI
 
 logger = logging.getLogger(__name__)
 
