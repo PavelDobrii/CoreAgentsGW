@@ -115,7 +115,7 @@ async def generate_trip(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> GenerateTripResponse:
-    if payload.id != route_id:
+    if payload.id is not None and payload.id != route_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mismatched identifiers")
 
     repo = RouteDraftRepository(db)
@@ -134,7 +134,9 @@ async def generate_trip(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Route not found")
 
     updated_payload = dict(refreshed.payload_json or {})
-    updated_payload["generateRequest"] = payload.model_dump()
+    request_snapshot = payload.model_dump(mode="json", exclude_unset=True)
+    request_snapshot.setdefault("id", str(route_id))
+    updated_payload["generateRequest"] = request_snapshot
     await repo.update_draft(
         route_id,
         status=TripStatus.draft.value,

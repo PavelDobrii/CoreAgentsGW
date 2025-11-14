@@ -72,12 +72,7 @@ class _StubGPTClient:
         return [node["poi_id"] for node in nodes]
 
 
-@pytest.mark.asyncio
-async def test_generate_trip_updates_draft(monkeypatch, async_client, registered_user):
-    payload = _sample_trip_payload()
-    created = await async_client.post("/v1/routes", json=payload, headers=registered_user["headers"])
-    trip_id = created.json()["id"]
-
+def _mock_generation_dependencies(monkeypatch, payload):
     async def fake_fetch_places(**kwargs):
         base_lat = payload["start"]["location"]["lat"]
         base_lng = payload["start"]["location"]["lng"]
@@ -102,7 +97,16 @@ async def test_generate_trip_updates_draft(monkeypatch, async_client, registered
     monkeypatch.setattr("city_guide.app.services.google_directions.distance_matrix", fake_distance_matrix)
     monkeypatch.setattr("city_guide.app.api.v1.routes.get_gpt_client", lambda: _StubGPTClient())
 
-    generate_payload = {"id": trip_id, "waypoints": [], "places": []}
+
+@pytest.mark.asyncio
+async def test_generate_trip_updates_draft(monkeypatch, async_client, registered_user):
+    payload = _sample_trip_payload()
+    created = await async_client.post("/v1/routes", json=payload, headers=registered_user["headers"])
+    trip_id = created.json()["id"]
+
+    _mock_generation_dependencies(monkeypatch, payload)
+
+    generate_payload = {"waypoints": [], "places": []}
     response = await async_client.post(
         f"/v1/routes/{trip_id}/generate", json=generate_payload, headers=registered_user["headers"]
     )

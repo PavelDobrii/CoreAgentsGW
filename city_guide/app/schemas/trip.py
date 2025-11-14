@@ -82,7 +82,7 @@ class TripCreateUpdate(BaseModel):
 class GenerateTripOptions(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    id: uuid.UUID
+    id: uuid.UUID | None = None
     waypoints: list[str] = Field(default_factory=list)
     places: list[str] = Field(default_factory=list)
 
