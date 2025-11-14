@@ -60,25 +60,7 @@ class RouteDraft:
     points: list[RoutePoint] = field(default_factory=list)
 
 
-class InMemoryDB:
-    def __init__(self) -> None:
-        self.users: dict[uuid.UUID, User] = {}
-        self.users_by_email: dict[str, uuid.UUID] = {}
-        self.profiles: dict[uuid.UUID, UserProfile] = {}
-        self.route_drafts: dict[uuid.UUID, RouteDraft] = {}
-        self.route_contexts: dict[uuid.UUID, dict] = {}
-        self.access_tokens: dict[str, uuid.UUID] = {}
-        self.refresh_tokens: dict[str, uuid.UUID] = {}
-
-    def reset(self) -> None:
-        self.__init__()
-
-
-DB = InMemoryDB()
-
 __all__ = [
-    "DB",
-    "InMemoryDB",
     "RouteDraft",
     "RoutePoint",
     "User",

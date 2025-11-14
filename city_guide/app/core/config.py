@@ -2,6 +2,33 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+try:  # pragma: no cover - optional dependency in some environments
+    from dotenv import load_dotenv
+except ModuleNotFoundError:  # pragma: no cover - fallback used instead
+    load_dotenv = None
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+ENV_PATH = BASE_DIR / ".env"
+
+
+def _load_env_file(path: Path) -> None:
+    if load_dotenv is not None:
+        load_dotenv(path, override=False)
+        return
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip())
+
+
+if ENV_PATH.exists():
+    _load_env_file(ENV_PATH)
 
 
 def _bool(name: str, default: bool) -> bool:
@@ -21,6 +48,8 @@ class Settings:
         "DATABASE_URL",
         "postgresql+psycopg2://postgres:postgres@localhost:5432/core_agents_gw",
     )
+    testing: bool = _bool("CITY_GUIDE_TESTING", False)
+    require_postgres: bool = _bool("REQUIRE_POSTGRES", True)
 
     jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "super-secret-key")
     access_token_exp_minutes: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
@@ -30,6 +59,14 @@ class Settings:
     gpt_model: str = os.getenv("GPT_MODEL", "gpt-4o-mini")
 
     use_google_sources: bool = _bool("USE_GOOGLE_SOURCES", False)
+
+    def __post_init__(self) -> None:
+        if self.testing:
+            return
+        if not self.require_postgres:
+            return
+        if not self.database_url.startswith(("postgresql+", "postgresql://", "postgres://")):
+            raise RuntimeError("City Guide API requires PostgreSQL in non-testing environments")
 
     @property
     def sync_database_url(self) -> str:
