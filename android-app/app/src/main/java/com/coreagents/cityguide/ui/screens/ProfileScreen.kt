@@ -15,46 +15,49 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.coreagents.cityguide.data.Profile
+import com.coreagents.cityguide.data.ProfileUpdate
 import com.coreagents.cityguide.viewmodel.CityGuideState
 
 @Composable
 fun ProfileScreen(
     state: CityGuideState,
-    onSaveProfile: (Profile) -> Unit,
-    onOpenPlaces: () -> Unit,
-    onOpenRoutes: () -> Unit
+    onSaveProfile: (ProfileUpdate) -> Unit,
+    onOpenTrips: () -> Unit
 ) {
-    val profile = state.profile ?: Profile(id = "", name = "", email = "")
-    val name = remember(profile.name) { mutableStateOf(profile.name) }
-    val city = remember(profile.city) { mutableStateOf(profile.city.orEmpty()) }
+    val profile = state.profile ?: Profile(id = "", email = "")
     val language = remember(profile.language) { mutableStateOf(profile.language.orEmpty()) }
     val interests = remember(profile.interests) { mutableStateOf(profile.interests.joinToString(", ")) }
+    val city = remember(profile.city) { mutableStateOf(profile.city.orEmpty()) }
+    val travelStyle = remember(profile.travelStyle) { mutableStateOf(profile.travelStyle.orEmpty()) }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Profile")
-        OutlinedTextField(value = name.value, onValueChange = { name.value = it }, label = { Text("Name") })
-        OutlinedTextField(value = city.value, onValueChange = { city.value = it }, label = { Text("City") })
-        OutlinedTextField(value = language.value, onValueChange = { language.value = it }, label = { Text("Language") })
-        OutlinedTextField(value = interests.value, onValueChange = { interests.value = it }, label = { Text("Interests (comma separated)") })
+        Text("Профиль")
+        OutlinedTextField(value = city.value, onValueChange = { city.value = it }, label = { Text("Город") })
+        OutlinedTextField(value = language.value, onValueChange = { language.value = it }, label = { Text("Язык") })
+        OutlinedTextField(value = travelStyle.value, onValueChange = { travelStyle.value = it }, label = { Text("Стиль путешествий") })
+        OutlinedTextField(
+            value = interests.value,
+            onValueChange = { interests.value = it },
+            label = { Text("Интересы через запятую") }
+        )
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Button(onClick = {
                 onSaveProfile(
-                    profile.copy(
-                        name = name.value,
-                        city = city.value,
-                        language = language.value,
-                        interests = interests.value.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+                    ProfileUpdate(
+                        city = city.value.takeIf { it.isNotBlank() },
+                        language = language.value.takeIf { it.isNotBlank() },
+                        interests = interests.value.split(',').mapNotNull { it.trim().takeIf(String::isNotEmpty) },
+                        travelStyle = travelStyle.value.takeIf { it.isNotBlank() }
                     )
                 )
-            }) { Text("Save") }
-            Button(onClick = onOpenPlaces) { Text("Places") }
-            Button(onClick = onOpenRoutes) { Text("Routes") }
+            }) { Text("Сохранить") }
+            Button(onClick = onOpenTrips) { Text("К поездкам") }
         }
 
-        state.error?.let { Text("Error: $it") }
+        state.error?.let { Text("Ошибка: $it") }
     }
 }

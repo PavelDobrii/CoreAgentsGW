@@ -10,23 +10,25 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.coreagents.cityguide.ui.screens.PlaceListScreen
+import com.coreagents.cityguide.ui.screens.OnboardingScreen
 import com.coreagents.cityguide.ui.screens.ProfileScreen
-import com.coreagents.cityguide.ui.screens.RouteDetailScreen
-import com.coreagents.cityguide.ui.screens.RoutesScreen
 import com.coreagents.cityguide.ui.screens.SignInScreen
 import com.coreagents.cityguide.ui.screens.SignUpScreen
+import com.coreagents.cityguide.ui.screens.TripCreateScreen
+import com.coreagents.cityguide.ui.screens.TripDetailScreen
+import com.coreagents.cityguide.ui.screens.TripsScreen
 import com.coreagents.cityguide.ui.theme.CityGuideTheme
 import com.coreagents.cityguide.viewmodel.CityGuideViewModel
 
 sealed class Route(val path: String) {
     data object SignIn : Route("signin")
     data object SignUp : Route("signup")
+    data object Onboarding : Route("onboarding")
     data object Profile : Route("profile")
-    data object Places : Route("places")
-    data object Routes : Route("routes")
-    data object RouteDetail : Route("route/{id}") {
-        fun build(id: String) = "route/$id"
+    data object Trips : Route("trips")
+    data object TripCreate : Route("trip/create")
+    data object TripDetail : Route("trip/{id}") {
+        fun build(id: String) = "trip/$id"
     }
 }
 
@@ -49,7 +51,7 @@ fun CityGuideApp(
                         onNavigateToSignUp = { navController.navigate(Route.SignUp.path) },
                         onLogin = { email, password ->
                             viewModel.signIn(email, password) {
-                                navController.navigate(Route.Profile.path) {
+                                navController.navigate(Route.Onboarding.path) {
                                     popUpTo(Route.SignIn.path) { inclusive = true }
                                 }
                             }
@@ -59,9 +61,17 @@ fun CityGuideApp(
                 composable(Route.SignUp.path) {
                     SignUpScreen(
                         state = uiState,
-                        onSignUp = { name, email, password ->
-                            viewModel.signUp(name, email, password) {
-                                navController.navigate(Route.Profile.path) {
+                        onSignUp = { data ->
+                            viewModel.signUp(
+                                data.email,
+                                data.password,
+                                data.firstName,
+                                data.lastName,
+                                data.phone,
+                                data.country,
+                                data.city
+                            ) {
+                                navController.navigate(Route.Onboarding.path) {
                                     popUpTo(Route.SignUp.path) { inclusive = true }
                                 }
                             }
@@ -69,37 +79,62 @@ fun CityGuideApp(
                         onNavigateToSignIn = { navController.popBackStack() }
                     )
                 }
+                composable(Route.Onboarding.path) {
+                    OnboardingScreen(
+                        state = uiState,
+                        onSave = { notes ->
+                            viewModel.rememberOnboarding(notes) {
+                                navController.navigate(Route.Trips.path) {
+                                    popUpTo(Route.Onboarding.path) { inclusive = true }
+                                }
+                            }
+                        }
+                    )
+                }
                 composable(Route.Profile.path) {
                     ProfileScreen(
                         state = uiState,
                         onSaveProfile = viewModel::updateProfile,
-                        onOpenPlaces = { navController.navigate(Route.Places.path) },
-                        onOpenRoutes = { navController.navigate(Route.Routes.path) }
+                        onOpenTrips = {
+                            viewModel.loadTrips()
+                            navController.navigate(Route.Trips.path)
+                        }
                     )
                 }
-                composable(Route.Places.path) {
-                    PlaceListScreen(
+                composable(Route.Trips.path) {
+                    TripsScreen(
                         state = uiState,
-                        onSearch = viewModel::loadPlaces,
+                        onRefresh = viewModel::loadTrips,
+                        onOpenProfile = {
+                            viewModel.loadProfile()
+                            navController.navigate(Route.Profile.path)
+                        },
+                        onCreate = { navController.navigate(Route.TripCreate.path) },
+                        onOpenTrip = { id ->
+                            viewModel.openTrip(id)
+                            navController.navigate(Route.TripDetail.build(id))
+                        }
+                    )
+                }
+                composable(Route.TripCreate.path) {
+                    TripCreateScreen(
+                        state = uiState,
+                        onCreate = { title, localityId, description, interests ->
+                            viewModel.createTrip(title, localityId, description, interests)
+                            navController.navigate(Route.Trips.path) {
+                                popUpTo(Route.TripCreate.path) { inclusive = true }
+                            }
+                        },
                         onBack = { navController.popBackStack() }
                     )
                 }
-                composable(Route.Routes.path) {
-                    RoutesScreen(
+                composable(Route.TripDetail.path) { entry ->
+                    val tripId = entry.arguments?.getString("id").orEmpty()
+                    TripDetailScreen(
+                        tripId = tripId,
                         state = uiState,
-                        onRefresh = viewModel::loadRoutes,
-                        onGenerate = viewModel::generateRoute,
-                        onOpenRoute = { id -> navController.navigate(Route.RouteDetail.build(id)) },
-                        onBack = { navController.popBackStack() }
-                    )
-                }
-                composable(Route.RouteDetail.path) { entry ->
-                    val routeId = entry.arguments?.getString("id").orEmpty()
-                    RouteDetailScreen(
-                        routeId = routeId,
-                        state = uiState,
-                        onRefresh = { viewModel.loadRoute(routeId) },
-                        onGenerate = { viewModel.generateRoute(routeId) },
+                        onRefresh = { viewModel.openTrip(tripId) },
+                        onGenerate = { viewModel.generateTrip(tripId) },
                         onBack = { navController.popBackStack() }
                     )
                 }
