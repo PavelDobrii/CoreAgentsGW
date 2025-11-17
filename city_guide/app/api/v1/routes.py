@@ -33,8 +33,10 @@ def _serialize_point(point) -> dict[str, Any]:
         "name": point.name,
         "lat": point.lat,
         "lng": point.lng,
+        "location": {"lat": point.lat, "lng": point.lng},
         "category": point.category,
         "order_index": point.order_index,
+        "order": point.order_index,
         "eta_min_walk": point.eta_min_walk,
         "eta_min_drive": point.eta_min_drive,
         "listen_sec": point.listen_sec,
@@ -45,8 +47,15 @@ def _serialize_point(point) -> dict[str, Any]:
 def _serialize_draft(draft) -> dict:
     data = dict(draft.payload_json)
     data.setdefault("id", str(draft.id))
+    data.setdefault("title", data.get("name", "Untitled"))
     data.setdefault("status", draft.status)
     data.setdefault("waypoints", [_serialize_point(point) for point in draft.points])
+    data.setdefault("createdAt", draft.created_at.isoformat())
+    data.setdefault("updatedAt", draft.updated_at.isoformat())
+    data.setdefault("encodedPolyline", data.get("encodedPolyline", ""))
+    data.setdefault("distance", data.get("distance", 0))
+    data.setdefault("rating", data.get("rating", 0))
+    data.setdefault("duration", data.get("duration", draft.duration_min))
     return data
 
 
@@ -238,12 +247,14 @@ def register_routes(app: Application) -> None:
         payload = request.json or {}
         response = {
             "name": payload.get("title", "Untitled"),
+            "title": payload.get("title", "Untitled"),
             "description": payload.get("description", ""),
             "localityId": payload.get("localityId", ""),
             "startWaypoint": _normalize_waypoint(payload.get("start", {})),
             "endWaypoint": _normalize_waypoint(payload.get("end", {})),
             "routeOptions": payload.get("routeOptions", {}),
             "status": "created",
+            "waypoints": [],
         }
         draft = repo.create_draft(
             user_id=user.id,
@@ -255,7 +266,7 @@ def register_routes(app: Application) -> None:
             payload_json=response,
             points=[],
         )
-        response["id"] = str(draft.id)
+        response = _serialize_draft(draft)
         return json_response(response, status_code=201)
 
     @app.route("GET", "/v1/routes", summary="List Trips")

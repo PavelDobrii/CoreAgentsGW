@@ -39,7 +39,8 @@ def register_routes(app: Application) -> None:
         profile = build_default_profile(user)
         persist_profile(profile_repo, user.id, profile)
         access, refresh = _issue_tokens(user.id)
-        return json_response({"access_token": access, "refresh_token": refresh, "user": profile}, status_code=201)
+        tokens = {"access_token": access, "refresh_token": refresh, "accessToken": access, "refreshToken": refresh}
+        return json_response({**tokens, "user": profile}, status_code=201)
 
     @app.route("POST", "/v1/login", summary="Login")
     def login(request: Request):
@@ -56,7 +57,8 @@ def register_routes(app: Application) -> None:
             profile["id"] = str(user.id)
             profile["email"] = user.email
         access, refresh = _issue_tokens(user.id)
-        return json_response({"access_token": access, "refresh_token": refresh, "user": profile})
+        tokens = {"access_token": access, "refresh_token": refresh, "accessToken": access, "refreshToken": refresh}
+        return json_response({**tokens, "user": profile})
 
     @app.route("POST", "/v1/refresh", summary="Refresh Token")
     def refresh(request: Request):
@@ -73,4 +75,5 @@ def register_routes(app: Application) -> None:
         if user is None or not user.is_active:
             raise HTTPException(401, "Inactive user")
         access, refresh_token = _issue_tokens(user.id)
-        return json_response({"access_token": access, "refresh_token": refresh_token})
+        tokens = {"access_token": access, "refresh_token": refresh_token, "accessToken": access, "refreshToken": refresh_token}
+        return json_response(tokens)
