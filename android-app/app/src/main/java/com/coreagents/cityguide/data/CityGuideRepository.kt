@@ -10,13 +10,13 @@ import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 
 class CityGuideRepository {
-    private var authToken: String? = null
+    private var tokens: Tokens? = null
 
     private val client: OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BODY })
         .addInterceptor(Interceptor { chain ->
             val request = chain.request().newBuilder().apply {
-                authToken?.let { header("Authorization", "Bearer $it") }
+                tokens?.accessToken?.let { header("Authorization", "Bearer $it") }
             }.build()
             chain.proceed(request)
         })
@@ -30,26 +30,55 @@ class CityGuideRepository {
         .create(CityGuideApi::class.java)
 
     suspend fun login(email: String, password: String): Profile = withContext(Dispatchers.IO) {
-        val profile = api.login(AuthRequest(email = email, password = password))
-        authToken = profile.id
-        profile
+        val response = api.login(AuthRequest(email = email, password = password))
+        tokens = response.tokens()
+        response.user
     }
 
-    suspend fun register(name: String, email: String, password: String): Profile = withContext(Dispatchers.IO) {
-        val profile = api.register(RegisterRequest(name, email, password))
-        authToken = profile.id
-        profile
+    suspend fun register(
+        email: String,
+        password: String,
+        firstName: String?,
+        lastName: String?,
+        phone: String?,
+        country: String?,
+        city: String?
+    ): Profile = withContext(Dispatchers.IO) {
+        val response = api.register(
+            RegisterRequest(
+                email = email,
+                password = password,
+                firstName = firstName,
+                lastName = lastName,
+                phoneNumber = phone,
+                country = country,
+                city = city
+            )
+        )
+        tokens = response.tokens()
+        response.user
+    }
+
+    suspend fun refreshToken(): Tokens = withContext(Dispatchers.IO) {
+        val refreshed = api.refresh(RefreshRequest(refreshToken = tokens?.refreshToken.orEmpty()))
+        tokens = refreshed
+        refreshed
     }
 
     suspend fun profile(): Profile = withContext(Dispatchers.IO) { api.profile() }
 
-    suspend fun updateProfile(profile: Profile): Profile = withContext(Dispatchers.IO) { api.updateProfile(profile) }
+    suspend fun updateProfile(profile: ProfileUpdate): Profile = withContext(Dispatchers.IO) { api.updateProfile(profile) }
 
-    suspend fun places(): List<Place> = withContext(Dispatchers.IO) { api.places().items }
+    suspend fun trips(limit: Int? = null, offset: Int? = null): List<Trip> = withContext(Dispatchers.IO) {
+        api.routes(limit = limit, offset = offset)
+    }
 
-    suspend fun routes(): List<Route> = withContext(Dispatchers.IO) { api.routes().items }
+    suspend fun trip(id: String): Trip = withContext(Dispatchers.IO) { api.route(id) }
 
-    suspend fun route(id: String): Route = withContext(Dispatchers.IO) { api.route(id) }
+    suspend fun createTrip(body: TripRequest): Trip = withContext(Dispatchers.IO) { api.createRoute(body) }
 
-    suspend fun generateRoute(id: String): Route = withContext(Dispatchers.IO) { api.generate(id) }
+    suspend fun updateTrip(id: String, body: TripRequest): Trip = withContext(Dispatchers.IO) { api.updateRoute(id, body) }
+
+    suspend fun generateTrip(id: String, request: GenerateTripRequest): GenerateTripResponse =
+        withContext(Dispatchers.IO) { api.generate(id, request) }
 }
