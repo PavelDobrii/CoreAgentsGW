@@ -195,7 +195,12 @@ class Application:
         if method.upper() == "OPTIONS":
             return Response(204, None)
 
-        route, path_params = self.match(method, path)
+        try:
+            route, path_params = self.match(method, path)
+        except HTTPException as exc:
+            # Возвращаем корректный ответ (например, 404) вместо падения uvicorn
+            # при обращении к неизвестным путям.
+            return Response(exc.status_code, {"detail": exc.detail})
         request = Request(method, path, headers, params, json_body, path_params)
         try:
             response = route.handler(request)

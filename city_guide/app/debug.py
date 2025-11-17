@@ -10,6 +10,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+# Для запуска требуется установленный uvicorn из зависимостей проекта;
+# без него импорт завершится ошибкой и сервис не поднимется.
 import uvicorn
 
 

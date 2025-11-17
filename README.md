@@ -13,6 +13,9 @@
    python -m pip install --upgrade pip
    python -m pip install -r ../.meta/packages
    ```
+   > Обязательно проверьте, что `uvicorn` действительно установился: без него
+   > `python -m city_guide.app.debug` завершится с ошибкой импорта и сервис не
+   > запустится.
 3. Скопируйте файл окружения и подберите значения под себя:
    ```bash
    cp .env.example .env
