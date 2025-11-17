@@ -32,14 +32,14 @@ test:
 migrate:
 	$(PYTHON) -m alembic upgrade head
 
-seed:
-	$(PYTHON) - <<'PY'
-from pathlib import Path
-from sqlalchemy import create_engine, text
-from city_guide.app.core.config import settings
-
-engine = create_engine(settings.sync_database_url)
-sql = Path('city_guide/dev/sql/seed_poi_vilnius.sql').read_text()
-with engine.begin() as conn:
-    conn.execute(text(sql))
-PY
+#seed:
+#	$(PYTHON) - <<'PY'
+#from pathlib import Path
+#from sqlalchemy import create_engine, text
+#from city_guide.app.core.config import settings
+#
+#engine = create_engine(settings.sync_database_url)
+#sql = Path('city_guide/dev/sql/seed_poi_vilnius.sql').read_text()
+#with engine.begin() as conn:
+#    conn.execute(text(sql))
+#PY
