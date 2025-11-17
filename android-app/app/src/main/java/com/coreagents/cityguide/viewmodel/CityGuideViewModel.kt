@@ -3,9 +3,9 @@ package com.coreagents.cityguide.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.coreagents.cityguide.data.CityGuideRepository
-import com.coreagents.cityguide.data.Place
-import com.coreagents.cityguide.data.Profile
-import com.coreagents.cityguide.data.Route
+import com.coreagents.cityguide.data.GenerateTripRequest
+import com.coreagents.cityguide.data.ProfileUpdate
+import com.coreagents.cityguide.data.TripRequest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -25,50 +25,85 @@ class CityGuideViewModel(
         }
     }
 
-    fun signUp(name: String, email: String, password: String, onSuccess: () -> Unit) {
+    fun signUp(
+        email: String,
+        password: String,
+        firstName: String?,
+        lastName: String?,
+        phone: String?,
+        country: String?,
+        city: String?,
+        onSuccess: () -> Unit
+    ) {
         launchAndCatch {
-            val profile = repository.register(name, email, password)
+            val profile = repository.register(email, password, firstName, lastName, phone, country, city)
             updateState(profile = profile, error = null)
             onSuccess()
         }
     }
 
-    fun updateProfile(profile: Profile) {
+    fun refreshSession() {
         launchAndCatch {
-            val updated = repository.updateProfile(profile)
+            val tokens = repository.refreshToken()
+            updateState(tokens = tokens)
+        }
+    }
+
+    fun loadProfile() {
+        launchAndCatch {
+            val profile = repository.profile()
+            updateState(profile = profile, error = null)
+        }
+    }
+
+    fun updateProfile(update: ProfileUpdate) {
+        launchAndCatch {
+            val updated = repository.updateProfile(update)
             updateState(profile = updated, error = null)
         }
     }
 
-    fun loadPlaces() {
+    fun loadTrips() {
         launchAndCatch {
-            val places = repository.places()
-            updateState(places = places, error = null)
+            val trips = repository.trips()
+            updateState(trips = trips, error = null)
         }
     }
 
-    fun loadRoutes() {
+    fun openTrip(id: String) {
         launchAndCatch {
-            val routes = repository.routes()
-            updateState(routes = routes, error = null)
+            val trip = repository.trip(id)
+            updateState(currentTrip = trip, error = null)
         }
     }
 
-    fun loadRoute(id: String) {
+    fun createTrip(title: String, localityId: String?, description: String?, interests: List<String>) {
         launchAndCatch {
-            val route = repository.route(id)
-            updateState(currentRoute = route, error = null)
+            val trip = repository.createTrip(
+                TripRequest(
+                    title = title,
+                    localityId = localityId,
+                    description = description,
+                    routeOptions = if (interests.isNotEmpty()) com.coreagents.cityguide.data.RouteOptions(interests = interests) else null
+                )
+            )
+            val updatedList = (state.value.trips + trip).sortedBy { it.name }
+            updateState(trips = updatedList, currentTrip = trip, error = null)
         }
     }
 
-    fun generateRoute(id: String) {
+    fun generateTrip(id: String) {
         launchAndCatch {
-            val generated = repository.generateRoute(id)
-            val updatedRoutes = state.value.routes.map { route ->
-                if (route.id == id) generated else route
-            }
-            updateState(routes = updatedRoutes, currentRoute = generated, error = null)
+            repository.generateTrip(id, GenerateTripRequest())
+            val refreshed = repository.trip(id)
+            val updatedTrips = state.value.trips.map { if (it.id == id) refreshed else it }
+            updateState(trips = updatedTrips, currentTrip = refreshed, error = null)
         }
+    }
+
+    fun rememberOnboarding(notes: String, onDone: () -> Unit) {
+        updateState(onboardingNotes = notes)
+        onDone()
     }
 
     private fun launchAndCatch(block: suspend () -> Unit) {
@@ -83,18 +118,20 @@ class CityGuideViewModel(
     private fun updateState(
         isLoading: Boolean = state.value.isLoading,
         error: String? = state.value.error,
-        profile: Profile? = state.value.profile,
-        places: List<Place> = state.value.places,
-        routes: List<Route> = state.value.routes,
-        currentRoute: Route? = state.value.currentRoute
+        tokens: com.coreagents.cityguide.data.Tokens? = state.value.tokens,
+        profile: com.coreagents.cityguide.data.Profile? = state.value.profile,
+        trips: List<com.coreagents.cityguide.data.Trip> = state.value.trips,
+        currentTrip: com.coreagents.cityguide.data.Trip? = state.value.currentTrip,
+        onboardingNotes: String = state.value.onboardingNotes
     ) {
         _state.value = CityGuideState(
             isLoading = isLoading,
             error = error,
+            tokens = tokens,
             profile = profile,
-            places = places,
-            routes = routes,
-            currentRoute = currentRoute
+            trips = trips,
+            currentTrip = currentTrip,
+            onboardingNotes = onboardingNotes
         )
     }
 }

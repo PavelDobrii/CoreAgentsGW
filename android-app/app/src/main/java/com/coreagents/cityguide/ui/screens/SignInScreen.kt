@@ -5,10 +5,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
@@ -27,17 +27,15 @@ fun SignInScreen(
     val email = remember { mutableStateOf("") }
     val password = remember { mutableStateOf("") }
 
-    AuthLayout(title = "Sign In", state = state) {
+    AuthLayout(title = "Добро пожаловать", state = state) {
         AuthField(label = "Email", value = email)
-        AuthField(label = "Password", value = password)
+        AuthField(label = "Пароль", value = password)
 
         Button(onClick = { onLogin(email.value, password.value) }, modifier = Modifier.padding(top = 8.dp)) {
-            Text("Login")
+            Text("Войти")
         }
 
-        TextButton(onClick = onNavigateToSignUp) {
-            Text("No account yet? Sign up")
-        }
+        TextButton(onClick = onNavigateToSignUp) { Text("Создать новый профиль") }
     }
 }
 
