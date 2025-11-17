@@ -15,35 +15,37 @@ import androidx.compose.ui.unit.dp
 import com.coreagents.cityguide.viewmodel.CityGuideState
 
 @Composable
-fun RouteDetailScreen(
-    routeId: String,
+fun TripDetailScreen(
+    tripId: String,
     state: CityGuideState,
     onRefresh: () -> Unit,
     onGenerate: () -> Unit,
     onBack: () -> Unit
 ) {
-    val route = state.currentRoute ?: state.routes.find { it.id == routeId }
+    val trip = state.currentTrip ?: state.trips.find { it.id == tripId }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = onBack) { Text("Back") }
-            Button(onClick = onRefresh) { Text("Refresh") }
-            Button(onClick = onGenerate) { Text("Generate") }
+            Button(onClick = onBack) { Text("Назад") }
+            Button(onClick = onRefresh) { Text("Обновить") }
+            Button(onClick = onGenerate) { Text("Перегенерировать") }
         }
 
-        route?.let {
-            Text(text = it.title, modifier = Modifier.padding(top = 12.dp))
-            it.summary?.let { summary -> Text(summary) }
+        trip?.let {
+            Text(text = it.name, modifier = Modifier.padding(top = 12.dp))
+            it.description?.let { summary -> Text(summary) }
+            it.status.let { status -> Text("Статус: $status") }
             LazyColumn(modifier = Modifier.padding(top = 8.dp)) {
-                items(it.points) { point ->
+                items(it.waypoints.orEmpty()) { point ->
                     Column(modifier = Modifier.padding(vertical = 6.dp)) {
                         Text(point.name)
+                        Text(point.address)
                         point.description?.let { desc -> Text(desc) }
                     }
                 }
             }
-        } ?: Text("Route not loaded")
+        } ?: Text("Маршрут не найден")
 
-        state.error?.let { Text("Error: $it") }
+        state.error?.let { Text("Ошибка: $it") }
     }
 }
