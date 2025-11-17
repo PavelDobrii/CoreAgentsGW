@@ -16,27 +16,28 @@ import androidx.compose.ui.unit.dp
 import com.coreagents.cityguide.viewmodel.CityGuideState
 
 @Composable
-fun RoutesScreen(
+fun TripsScreen(
     state: CityGuideState,
     onRefresh: () -> Unit,
-    onGenerate: (String) -> Unit,
-    onOpenRoute: (String) -> Unit,
-    onBack: () -> Unit
+    onOpenProfile: () -> Unit,
+    onCreate: () -> Unit,
+    onOpenTrip: (String) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = onRefresh) { Text("Refresh routes") }
-            Button(onClick = onBack) { Text("Back") }
+            Button(onClick = onRefresh) { Text("Обновить") }
+            Button(onClick = onCreate) { Text("Новый маршрут") }
+            Button(onClick = onOpenProfile) { Text("Профиль") }
         }
 
         LazyColumn(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-            items(state.routes) { route ->
+            items(state.trips) { trip ->
                 Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                    Text(route.title)
-                    route.summary?.let { Text(it) }
+                    Text(trip.name)
+                    trip.description?.let { Text(it) }
+                    Text("Статус: ${trip.status}")
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { onOpenRoute(route.id) }) { Text("Open") }
-                        Button(onClick = { onGenerate(route.id) }) { Text("Generate") }
+                        Button(onClick = { onOpenTrip(trip.id) }) { Text("Открыть") }
                     }
                 }
             }
