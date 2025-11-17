@@ -1,6 +1,8 @@
 package com.coreagents.cityguide.data
 
 import com.coreagents.cityguide.BuildConfig
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Interceptor
@@ -24,7 +26,13 @@ class CityGuideRepository {
 
     private val api: CityGuideApi = Retrofit.Builder()
         .baseUrl(BuildConfig.API_BASE_URL)
-        .addConverterFactory(MoshiConverterFactory.create())
+        .addConverterFactory(
+            MoshiConverterFactory.create(
+                Moshi.Builder()
+                    .add(KotlinJsonAdapterFactory())
+                    .build()
+            )
+        )
         .client(client)
         .build()
         .create(CityGuideApi::class.java)
