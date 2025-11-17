@@ -128,8 +128,19 @@ class Application:
                 await send({"type": "lifespan.shutdown.complete"})
                 return
 
+    def _add_cors_headers(self, headers: Dict[str, str] | None = None) -> Dict[str, str]:
+        base = {
+            "access-control-allow-origin": "*",
+            "access-control-allow-headers": "authorization, content-type",
+            "access-control-allow-methods": "GET, POST, PUT, OPTIONS",
+        }
+        if not headers:
+            return base
+        lower = {k.lower(): v for k, v in headers.items()}
+        return {**base, **lower}
+
     async def _send_response(self, send: Callable[..., Any], response: Response) -> None:
-        headers = response.headers or {}
+        headers = self._add_cors_headers(response.headers)
         body = response.body
         if isinstance(body, (dict, list)):
             body_bytes = json.dumps(body).encode()
@@ -181,6 +192,9 @@ class Application:
     ) -> Response:
         headers = {k: v for k, v in (headers or {}).items()}
         params = {k: str(v) for k, v in (params or {}).items()}
+        if method.upper() == "OPTIONS":
+            return Response(204, None)
+
         route, path_params = self.match(method, path)
         request = Request(method, path, headers, params, json_body, path_params)
         try:
